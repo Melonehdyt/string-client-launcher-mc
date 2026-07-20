@@ -416,7 +416,7 @@ body {
   border-bottom: 1px solid var(--glass-border); flex-shrink: 0;
 }
 .inst-side-preview {
-  position: relative; height: 148px; flex-shrink: 0; overflow: hidden;
+  position: relative; height: 100px; flex-shrink: 0; overflow: hidden;
 }
 .inst-side-preview-bg {
   position: absolute; inset: 0; opacity: 0.5;
@@ -431,16 +431,16 @@ body {
   pointer-events: none;
 }
 .inst-side-info {
-  padding: 12px 16px; border-bottom: 1px solid var(--glass-border);
+  padding: 10px 16px; border-bottom: 1px solid var(--glass-border);
 }
 .inst-side-version { display: flex; align-items: center; gap: 8px; }
 .inst-side-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .inst-side-name { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }
-.inst-side-desc { font-size: 10px; color: rgba(255,255,255,0.25); margin: 6px 0 10px; line-height: 1.5; }
+.inst-side-desc { font-size: 10px; color: rgba(255,255,255,0.25); margin: 4px 0 8px; line-height: 1.5; }
 .inst-side-status { display: flex; align-items: center; gap: 6px; font-size: 9px; color: rgba(255,255,255,0.2); }
 .inst-side-status-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(74,222,128,0.6); }
 
-.inst-side-controls { padding: 12px 16px; border-bottom: 1px solid var(--glass-border); display: flex; flex-direction: column; gap: 10px; }
+.inst-side-controls { padding: 10px 16px; border-bottom: 1px solid var(--glass-border); display: flex; flex-direction: column; gap: 8px; }
 .inst-field label { display: block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.2); margin-bottom: 4px; }
 .inst-field-row { display: flex; gap: 6px; }
 .inst-select {
@@ -482,7 +482,7 @@ body {
 
 .inst-launch-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; padding: 10px 0; border-radius: 8px;
+  width: 100%; padding: 8px 0; border-radius: 8px;
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
   color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; letter-spacing: 0.3px;
   cursor: pointer; transition: all 0.15s;
@@ -509,11 +509,11 @@ body {
 .inst-side-instances::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.04); border-radius: 4px; }
 .inst-side-instances-hdr {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.2);
-  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.3);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px;
 }
 .inst-side-instances-n {
-  font-size: 9px; color: rgba(255,255,255,0.08);
+  font-size: 10px; color: rgba(255,255,255,0.1);
 }
 .inst-side-empty { text-align: center; padding: 16px 0; }
 .inst-side-empty-icon {
@@ -525,39 +525,120 @@ body {
 .inst-side-empty p { font-size: 11px; color: rgba(255,255,255,0.15); margin: 0 0 2px; }
 .inst-side-empty span { font-size: 9px; color: rgba(255,255,255,0.06); }
 
-.inst-side-instance-list { display: flex; flex-direction: column; gap: 4px; }
+.inst-side-instance-list { display: flex; flex-direction: column; gap: 6px; }
 .inst-side-instance-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  border-radius: 8px; transition: background 0.1s;
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px;
+  border-radius: 10px; transition: background 0.1s; cursor: pointer;
 }
 .inst-side-instance-row:hover { background: var(--glass-hover); }
 .inst-side-instance-icon {
-  width: 26px; height: 26px; border-radius: 6px; border: 1px solid;
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; flex-shrink: 0;
+  font-size: 14px; font-weight: 700; flex-shrink: 0;
 }
 .inst-side-instance-info { flex: 1; min-width: 0; }
 .inst-side-instance-name {
-  font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.5);
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.6);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .inst-side-instance-meta {
-  font-size: 8px; color: rgba(255,255,255,0.15); margin-top: 1px;
+  font-size: 10px; color: rgba(255,255,255,0.2); margin-top: 2px;
 }
 .inst-side-play-btn {
-  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.4); font-size: 9px; font-weight: 600; padding: 3px 10px;
-  border-radius: 4px; cursor: pointer; transition: all 0.12s;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5); font-size: 11px; font-weight: 600; padding: 5px 14px;
+  border-radius: 6px; cursor: pointer; transition: all 0.12s;
 }
-.inst-side-play-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+.inst-side-play-btn:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); }
 .inst-side-play-btn:disabled { opacity: 0.3; cursor: default; }
 .inst-side-del-btn {
-  background: none; border: none; color: rgba(255,80,80,0.2);
-  cursor: pointer; padding: 2px; transition: color 0.12s;
+  background: none; border: none; color: rgba(255,80,80,0.25);
+  cursor: pointer; padding: 4px; transition: color 0.12s; display: flex;
 }
-.inst-side-del-btn:hover { color: rgba(255,80,80,0.4); }
+.inst-side-del-btn:hover { color: rgba(255,80,80,0.5); }
 
-/* ── Friends ── */
+/* ── Full-page Instance Manager ── */
+.inst-manager-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.8); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+}
+.inst-manager {
+  width: 560px; max-width: 88vw; max-height: 80vh;
+  background: rgba(15,15,20,0.96); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+.inst-manager-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 22px; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.inst-manager-title { font-size: 17px; font-weight: 700; color: rgba(255,255,255,0.9); }
+.inst-manager-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+.inst-manager-close {
+  background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer;
+  padding: 6px; border-radius: 6px; transition: all 0.12s;
+}
+.inst-manager-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+.inst-manager-save {
+  background: rgba(96,165,250,0.12); border: 1px solid rgba(96,165,250,0.2);
+  color: rgba(96,165,250,0.8); font-size: 11px; font-weight: 600; padding: 5px 14px;
+  border-radius: 6px; cursor: pointer; transition: all 0.12s;
+}
+.inst-manager-save:hover { background: rgba(96,165,250,0.18); color: rgba(96,165,250,0.95); }
+.inst-manager-body { padding: 18px 22px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
+.inst-manager-section-title { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+.inst-manager-settings { display: flex; flex-direction: column; gap: 10px; }
+.inst-manager-field { display: flex; flex-direction: column; gap: 4px; }
+.inst-manager-field label { font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 500; }
+.inst-manager-input {
+  width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.7); font-size: 13px; outline: none;
+  box-sizing: border-box; transition: border-color 0.12s;
+}
+.inst-manager-input:focus { border-color: rgba(96,165,250,0.3); }
+.inst-manager-select {
+  width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.7); font-size: 13px; outline: none;
+  cursor: pointer; box-sizing: border-box;
+}
+.inst-manager-loader-row { display: flex; gap: 6px; }
+.inst-manager-loader-btn {
+  padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.4); font-size: 12px;
+  cursor: pointer; transition: all 0.12s; font-weight: 500;
+}
+.inst-manager-loader-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); }
+.inst-manager-loader-btn.active { background: rgba(96,165,250,0.12); border-color: rgba(96,165,250,0.25); color: rgba(96,165,250,0.8); }
+.inst-manager-mods { display: flex; flex-direction: column; gap: 4px; }
+.inst-manager-mod-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;
+}
+.inst-manager-mod-name { flex: 1; font-size: 13px; color: rgba(255,255,255,0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inst-manager-mod-del {
+  background: none; border: none; color: rgba(248,113,113,0.5); cursor: pointer;
+  padding: 4px; border-radius: 4px; transition: all 0.12s; display: flex;
+}
+.inst-manager-mod-del:hover { background: rgba(248,113,113,0.12); color: rgba(248,113,113,0.8); }
+.inst-manager-mods-empty { font-size: 12px; color: rgba(255,255,255,0.25); text-align: center; padding: 16px 0; }
+.inst-manager-dropzone {
+  border: 2px dashed rgba(255,255,255,0.1); border-radius: 10px;
+  padding: 28px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: rgba(255,255,255,0.02);
+}
+.inst-manager-dropzone:hover { border-color: rgba(96,165,250,0.4); background: rgba(96,165,250,0.06); }
+.inst-manager-dropzone.drag-over { border-color: rgba(96,165,250,0.6); background: rgba(96,165,250,0.1); }
+.inst-manager-dropzone-text { font-size: 13px; color: rgba(255,255,255,0.35); margin-top: 8px; }
+.inst-manager-section-danger { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px; margin-top: auto; }
+.inst-manager-delete-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.15);
+  color: rgba(248,113,113,0.6); font-size: 12px; font-weight: 600;
+  padding: 10px 16px; border-radius: 8px; cursor: pointer; transition: all 0.12s; justify-content: center;
+}
+.inst-manager-delete-btn:hover { background: rgba(248,113,113,0.14); color: rgba(248,113,113,0.8); }
 .friend-strip { display: flex; flex-direction: column; gap: 4px; }
 .friend-row {
   display: flex; align-items: center; gap: 8px;

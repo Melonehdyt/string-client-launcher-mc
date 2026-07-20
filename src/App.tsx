@@ -389,6 +389,10 @@ export default function App() {
     setInstances(prev => prev.filter(i => i.id !== id))
   }, [])
 
+  const updateInstance = useCallback((id: number, updates: any) => {
+    setInstances(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i))
+  }, [])
+
   // Apply theme
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
   useEffect(() => {
@@ -457,7 +461,7 @@ export default function App() {
         <div className="login-wrap">
           <div className="glass login-card">
             <div className="login-logo">
-              <img src={logo} alt="Logo" style={{ width: 140, height: 140, borderRadius: '50%', opacity: 0.75, objectFit: 'cover', objectPosition: 'center', border: '2px solid rgba(255,255,255,0.12)', boxShadow: '0 0 16px rgba(255,255,255,0.06)' }} />
+              <img src={logo} alt="Logo" style={{ width: 280, height: 280, borderRadius: '50%', opacity: 0.75, objectFit: 'cover', objectPosition: 'center', border: '2px solid rgba(255,255,255,0.12)', boxShadow: '0 0 16px rgba(255,255,255,0.06)' }} />
             </div>
             <h1 className="login-title">String Client</h1>
             <p className="login-sub">Lightweight Minecraft Launcher</p>
@@ -481,7 +485,7 @@ export default function App() {
         {/* Sidebar */}
         <nav className="sidebar">
           <div className="sidebar-logo" onClick={() => setTab('home')}>
-            <img src={logo} alt="Logo" style={{ width: 56, height: 56, borderRadius: '50%', opacity: 0.85, objectFit: 'cover', objectPosition: 'center', border: '2px solid rgba(255,255,255,0.12)', boxShadow: '0 0 12px rgba(255,255,255,0.06)' }} />
+            <img src={logo} alt="Logo" style={{ width: 72, height: 72, borderRadius: '50%', opacity: 0.85, objectFit: 'cover', objectPosition: 'center', border: '2px solid rgba(255,255,255,0.12)', boxShadow: '0 0 12px rgba(255,255,255,0.06)' }} />
           </div>
           <div className="sidebar-nav">
             <SideBtn id="home" icon="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M9 22V12h6v10" tab={tab} setTab={setTab} />
@@ -585,7 +589,7 @@ export default function App() {
               <InstancesTab
                 selectedVer={selectedVer} setSelectedVer={setSelectedVer}
                 jvm={jvm} instances={instances}
-                onAdd={addInstance} onRemove={removeInstance}
+                onAdd={addInstance} onRemove={removeInstance} onUpdate={updateInstance}
                 onLaunch={handleLaunch} launching={launching} launchPid={launchPid} onKill={handleKill}
               />
             )}
@@ -835,9 +839,9 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
 }
 
 /* ── Instances ── */
-function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRemove, onLaunch, launching, launchPid, onKill }: {
+function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRemove, onUpdate, onLaunch, launching, launchPid, onKill }: {
   selectedVer: string; setSelectedVer: (v: string) => void; jvm: string
-  instances: any[]; onAdd: (i: any) => void; onRemove: (id: number) => void
+  instances: any[]; onAdd: (i: any) => void; onRemove: (id: number) => void; onUpdate: (id: number, u: any) => void
   onLaunch: (v: string) => void; launching: boolean; launchPid: number | null; onKill: () => void
 }) {
   const [name, setName] = useState('')
@@ -849,6 +853,9 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
   const [sort, setSort] = useState('Popular')
   const [managing, setManaging] = useState<any | null>(null)
   const [mods, setMods] = useState<any[]>([])
+  const [editName, setEditName] = useState('')
+  const [editRes, setEditRes] = useState('1280x720')
+  const [editLoader, setEditLoader] = useState('Fabric')
   const loaders = ['Vanilla', 'Fabric', 'Forge']
 
   useEffect(() => {
@@ -871,6 +878,9 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
 
   const openManage = async (inst: any) => {
     setManaging(inst)
+    setEditName(inst.name || '')
+    setEditRes(inst.resolution || '1280x720')
+    setEditLoader(inst.loader || 'Fabric')
   }
 
   const closeManage = () => {
@@ -927,6 +937,12 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
     await api?.deleteProfile(inst.version)
     onRemove(inst.id)
     closeManage()
+  }
+
+  const saveInstance = () => {
+    if (!managing) return
+    onUpdate(managing.id, { name: editName, resolution: editRes, loader: editLoader })
+    setManaging({ ...managing, name: editName, resolution: editRes, loader: editLoader })
   }
 
   const createInstance = () => {
@@ -1014,113 +1030,70 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
 
         {/* Right sidebar */}
         <div className="inst-side">
-          {managing && <div>
-            <div className="inst-side-header">
-              <button onClick={closeManage} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',padding:0,marginRight:8,fontSize:14}}>&larr;</button>
-              {managing.name}
+          <div className="inst-side-header">Selected Version</div>
+          <div className="inst-side-preview">
+            <div className="inst-side-preview-bg" style={{ background: `linear-gradient(145deg, ${selected.color}55, ${selected.color}22, rgba(10,10,15,0.9))` }} />
+            {bannerUrl && <img src={bannerUrl} alt={selected.label} className="inst-side-preview-img" />}
+            <div className="inst-side-preview-grad" />
+          </div>
+          <div className="inst-side-info">
+            <div className="inst-side-version">
+              <div className="inst-side-dot" style={{ background: selected.color }} />
+              <span className="inst-side-name">Minecraft {selected.label}</span>
             </div>
-            <div style={{padding:'12px 0'}}>
-              <div className="inst-field">
-                <label>Mods ({mods.length})</label>
-                <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:6}}>
-                  {mods.map(m => (
-                    <div key={m.filename} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:6,padding:'6px 10px'}}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{flexShrink:0,color:'rgba(255,255,255,0.3)'}}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                      <span style={{flex:1,fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.filename}</span>
-                      <button onClick={() => deleteMod(m.name)} style={{background:'none',border:'none',color:'rgba(248,113,113,0.6)',cursor:'pointer',padding:2}}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                    </div>
+            <p className="inst-side-desc">{selected.sub}</p>
+            <div className="inst-side-status">
+              <div className="inst-side-status-dot" />
+              <span>using global minecraft</span>
+            </div>
+          </div>
+          <div className="inst-side-controls">
+            <div className="inst-field">
+              <label>Version</label>
+              <div className="inst-field-row">
+                <select value={selectedVer} onChange={e => setSelectedVer(e.target.value)} className="inst-select">
+                  {VERSIONS.slice().reverse().map(v => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
-                  {mods.length === 0 && <div style={{fontSize:11,color:'rgba(255,255,255,0.2)',padding:'8px 0',textAlign:'center'}}>No mods installed</div>}
-                </div>
-              </div>
-              <div
-                onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
-                onClick={pickAndUploadMod}
-                style={{
-                  marginTop:8, padding:'20px 12px', borderRadius:8, cursor:'pointer', textAlign:'center', fontSize:12,
-                  border: `2px dashed ${dragOver ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.08)'}`,
-                  background: dragOver ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.02)',
-                  color: dragOver ? 'rgba(96,165,250,0.8)' : 'rgba(255,255,255,0.3)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{display:'block',margin:'0 auto 6px',opacity:0.5}}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                {dragOver ? 'Drop mod here' : 'Drag & drop .jar or click to upload'}
-              </div>
-              <button onClick={() => deleteInstance(managing)} className="inst-launch-btn" style={{marginTop:6,background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.15)',color:'rgba(248,113,113,0.6)'}}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                Delete Instance
-              </button>
-            </div>
-          </div>}
-          {!managing && <div>
-            <div className="inst-side-header">Selected Version</div>
-            <div className="inst-side-preview">
-              <div className="inst-side-preview-bg" style={{ background: `linear-gradient(145deg, ${selected.color}55, ${selected.color}22, rgba(10,10,15,0.9))` }} />
-              {bannerUrl && <img src={bannerUrl} alt={selected.label} className="inst-side-preview-img" />}
-              <div className="inst-side-preview-grad" />
-            </div>
-            <div className="inst-side-info">
-              <div className="inst-side-version">
-                <div className="inst-side-dot" style={{ background: selected.color }} />
-                <span className="inst-side-name">Minecraft {selected.label}</span>
-              </div>
-              <p className="inst-side-desc">{selected.sub}</p>
-              <div className="inst-side-status">
-                <div className="inst-side-status-dot" />
-                <span>using global minecraft</span>
-              </div>
-            </div>
-            <div className="inst-side-controls">
-              <div className="inst-field">
-                <label>Version</label>
-                <div className="inst-field-row">
-                  <select value={selectedVer} onChange={e => setSelectedVer(e.target.value)} className="inst-select">
-                    {VERSIONS.slice().reverse().map(v => (
-                      <option key={v.id} value={v.id}>{v.label}</option>
-                    ))}
-                  </select>
-                  <button className="inst-gear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
-                </div>
-              </div>
-              <div className="inst-field">
-                <label>Loader</label>
-                <div className="inst-loader-row">
-                  {loaders.map(l => (
-                    <button key={l} className={`inst-loader-btn${selectedLoader === l ? ' active' : ''}`} onClick={() => setSelectedLoader(l)}>{l}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="inst-field">
-                <label>Resolution</label>
-                <select value={res} onChange={e => setRes(e.target.value)} className="inst-select">
-                  <option>854x480</option><option>1280x720</option><option>1920x1080</option>
                 </select>
-              </div>
-              <div className="inst-field">
-                <label>Name</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="My Instance" className="inst-input" />
-              </div>
-              <div className="inst-field">
-                <label>Accent</label>
-                <div className="inst-color-row">
-                  {INSTANCE_COLORS.map(c => (
-                    <div key={c} onClick={() => setSelectedColor(c)} className={`inst-color-dot${selectedColor === c ? ' active' : ''}`} style={{ background: c }} />
-                  ))}
-                </div>
-              </div>
-              <button className="inst-launch-btn" onClick={createInstance}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><circle cx="12" cy="12" r="10"/></svg>
-                Create Instance
-              </button>
-              <div className="inst-side-footer">
-                <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Settings</button>
-                <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>About</button>
+                <button className="inst-gear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
               </div>
             </div>
-          </div>}
+            <div className="inst-field">
+              <label>Loader</label>
+              <div className="inst-loader-row">
+                {loaders.map(l => (
+                  <button key={l} className={`inst-loader-btn${selectedLoader === l ? ' active' : ''}`} onClick={() => setSelectedLoader(l)}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="inst-field">
+              <label>Resolution</label>
+              <select value={res} onChange={e => setRes(e.target.value)} className="inst-select">
+                <option>854x480</option><option>1280x720</option><option>1920x1080</option>
+              </select>
+            </div>
+            <div className="inst-field">
+              <label>Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="My Instance" className="inst-input" />
+            </div>
+            <div className="inst-field">
+              <label>Accent</label>
+              <div className="inst-color-row">
+                {INSTANCE_COLORS.map(c => (
+                  <div key={c} onClick={() => setSelectedColor(c)} className={`inst-color-dot${selectedColor === c ? ' active' : ''}`} style={{ background: c }} />
+                ))}
+              </div>
+            </div>
+            <button className="inst-launch-btn" onClick={createInstance}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><circle cx="12" cy="12" r="10"/></svg>
+              Create Instance
+            </button>
+            <div className="inst-side-footer">
+              <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Settings</button>
+              <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>About</button>
+            </div>
+          </div>
 
           <div className="inst-side-instances">
             <div className="inst-side-instances-hdr">
@@ -1139,7 +1112,7 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
                   const vi = getVersionInfo(inst.version)
                   const color = inst.icon || vi.color
                   return (
-                    <div key={inst.id} className="inst-side-instance-row" onClick={() => openManage(inst)} style={{cursor:'pointer'}}>
+                    <div key={inst.id} className="inst-side-instance-row" onClick={() => openManage(inst)}>
                       <div className="inst-side-instance-icon" style={{ background: `linear-gradient(135deg, ${color}44, ${color}22)`, borderColor: `${color}33`, color }}>{inst.name[0]}</div>
                       <div className="inst-side-instance-info">
                         <div className="inst-side-instance-name">{inst.name}</div>
@@ -1156,6 +1129,83 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
           </div>
         </div>
       </div>
+
+      {/* Full-page Instance Manager */}
+      {managing && (
+        <div className="inst-manager-overlay" onClick={closeManage}>
+          <div className="inst-manager" onClick={e => e.stopPropagation()}>
+            <div className="inst-manager-header">
+              <div>
+                <div className="inst-manager-title">{managing.name}</div>
+                <div className="inst-manager-sub">{managing.version} &middot; {editLoader}</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <button className="inst-manager-save" onClick={saveInstance}>Save</button>
+                <button className="inst-manager-close" onClick={closeManage}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="inst-manager-body">
+              <div className="inst-manager-section">
+                <div className="inst-manager-section-title">Settings</div>
+                <div className="inst-manager-settings">
+                  <div className="inst-manager-field">
+                    <label>Name</label>
+                    <input className="inst-manager-input" value={editName} onChange={e => setEditName(e.target.value)} />
+                  </div>
+                  <div className="inst-manager-field">
+                    <label>Resolution</label>
+                    <select className="inst-manager-select" value={editRes} onChange={e => setEditRes(e.target.value)}>
+                      <option>854x480</option><option>1280x720</option><option>1920x1080</option>
+                    </select>
+                  </div>
+                  <div className="inst-manager-field">
+                    <label>Loader</label>
+                    <div className="inst-manager-loader-row">
+                      {loaders.map(l => (
+                        <button key={l} className={`inst-manager-loader-btn${editLoader === l ? ' active' : ''}`} onClick={() => setEditLoader(l)}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="inst-manager-section">
+                <div className="inst-manager-section-title">Mods ({mods.length})</div>
+                <div className="inst-manager-mods">
+                  {mods.map(m => (
+                    <div key={m.filename} className="inst-manager-mod-row">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{flexShrink:0,color:'rgba(255,255,255,0.25)'}}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      <span className="inst-manager-mod-name">{m.filename}</span>
+                      <button className="inst-manager-mod-del" onClick={() => deleteMod(m.name)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                  {mods.length === 0 && <div className="inst-manager-mods-empty">No mods installed</div>}
+                </div>
+              </div>
+              <div className="inst-manager-section">
+                <div className="inst-manager-section-title">Add Mod</div>
+                <div
+                  className={`inst-manager-dropzone${dragOver ? ' drag-over' : ''}`}
+                  onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+                  onClick={pickAndUploadMod}
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{opacity:0.4}}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <div className="inst-manager-dropzone-text">{dragOver ? 'Drop mod here' : 'Drag & drop .jar or click to browse'}</div>
+                </div>
+              </div>
+              <div className="inst-manager-section-danger">
+                <button className="inst-manager-delete-btn" onClick={() => deleteInstance(managing)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  Delete Instance
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

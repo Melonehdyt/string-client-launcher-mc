@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -170,7 +170,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'String Client',
-    icon: path.join(__dirname, 'public', 'icon-512x512.png'),
+    icon: nativeImage.createFromPath(path.join(__dirname, 'buildResources', 'icon.png')),
     backgroundColor: '#0b0b12',
     frame: false,
     webPreferences: {
@@ -180,6 +180,8 @@ function createWindow() {
       webviewTag: true,
     },
   });
+
+  mainWindow.setIcon(nativeImage.createFromPath(path.join(__dirname, 'buildResources', 'icon.png')));
 
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, cb) => {
     const headers = { ...details.responseHeaders }
@@ -263,7 +265,17 @@ ipcMain.handle('data:load-accounts', async () => {
   return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
 });
 
-app.whenReady().then(() => { ensureDataDirs(); createWindow() });
+app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.stringclient.launcher');
+    const icoPath = path.join(__dirname, 'buildResources', 'icon.ico');
+    try {
+      const ico = nativeImage.createFromPath(icoPath);
+      if (!ico.isEmpty()) app.setUserTasks([{ program: process.execPath, arguments: '', iconPath: icoPath, iconIndex: 0, title: 'String Client', description: 'Launch String Client' }]);
+    } catch {}
+  }
+  ensureDataDirs(); createWindow()
+});
 app.on('window-all-closed', () => {
   if (mcProcess) mcProcess.kill();
   if (process.platform !== 'darwin') app.quit();

@@ -21,10 +21,21 @@
     "files": [
       "main.js",
       "preload.js",
+      "auth-main.js",
       "dist/**/*"
     ],
     "win": {
-      "target": "portable"
+      "target": "nsis",
+      "icon": "buildResources/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "String Client",
+      "unicode": true
     }
   },
   "dependencies": {
