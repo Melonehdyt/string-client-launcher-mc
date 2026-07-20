@@ -243,6 +243,20 @@ export default function App() {
       setJvm(d.jvm || '-XX:+UseG1GC -Xss1M'); setMcPath(d.mcPath || '')
       setInstances(d.instances || []); setServers(d.servers || DEFAULT_SERVERS)
       if (d.u) setLoggedIn(true)
+      // Load cosmetics from server (merge with local)
+      if (d.id) {
+        fetch(`${API}/api/cosmetics?playerId=${d.id}`).then(r => r.json()).then(list => {
+          if (Array.isArray(list)) {
+            list.forEach(item => {
+              if (!item.enabled) return
+              if (item.type === 'theme' && item.value) setTheme(item.value)
+              if (item.type === 'cape' && item.value) setCapeUrl(item.value)
+              if (item.type === 'bg' && item.value) setBgUrl(item.value)
+              if (item.type === 'overlay' && item.value) setBgOverlayColor(item.value)
+            })
+          }
+        }).catch(() => {})
+      }
     } catch {} }
   }, [])
 

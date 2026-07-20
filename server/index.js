@@ -12,7 +12,9 @@ const NEWS_PATH = join(__dirname, 'news.json')
 const BLOG_PATH = join(__dirname, 'blog.json')
 const BANNER_INDEX = join(__dirname, 'media', 'versions', 'index.json')
 const VERSIONS_DIR = join(__dirname, 'media', 'versions')
+const BLOG_IMAGES_DIR = join(__dirname, 'media', 'blog')
 const VERSIONS_PATH = join(__dirname, 'versions.json')
+const COSMETICS_PATH = join(__dirname, 'cosmetics.json')
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'
 
 function loadDB() {
@@ -69,6 +71,19 @@ function loadVersions() {
   try { return JSON.parse(readFileSync(VERSIONS_PATH, 'utf8')) } catch { return [...DEFAULT_VERSIONS] }
 }
 function saveVersions(v) { writeFileSync(VERSIONS_PATH, JSON.stringify(v, null, 2), 'utf8') }
+
+const DEFAULT_COSMETICS = [
+  { id:'cosm_dark', name:'Dark Theme', type:'theme', value:'dark', desc:'Dark glassmorphism theme' },
+  { id:'cosm_amoled', name:'AMOLED Theme', type:'theme', value:'amoled', desc:'Pure black AMOLED theme' },
+  { id:'cosm_mocha', name:'Mocha Theme', type:'theme', value:'mocha', desc:'Warm dark theme' },
+  { id:'cosm_cape1', name:'Classic Cape', type:'cape', value:'', desc:'First cape slot' },
+  { id:'cosm_cape2', name:'Tattered Cape', type:'cape', value:'', desc:'Second cape slot' },
+]
+function loadCosmeticsDef() {
+  if (!existsSync(COSMETICS_PATH)) return [...DEFAULT_COSMETICS]
+  try { return JSON.parse(readFileSync(COSMETICS_PATH, 'utf8')) } catch { return [...DEFAULT_COSMETICS] }
+}
+function saveCosmeticsDef(c) { writeFileSync(COSMETICS_PATH, JSON.stringify(c, null, 2), 'utf8') }
 
 const db = loadDB()
 const news = loadNews()
@@ -139,10 +154,33 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { playerId: existing.playerId, username: existing.username, friends: existing.friends || [] })
     }
     const playerId = randomUUID()
-    db[playerId] = { playerId, username, uuid, friends: [], createdAt: new Date().toISOString() }
+    db[playerId] = { playerId, username, uuid, friends: [], cosmetics: {}, createdAt: new Date().toISOString() }
     saveDB(db)
     return json(res, 200, { playerId, username, friends: [] })
   }
+
+  // Cosmetics: load (GET) and toggle (PUT) per player
+  if (req.method === 'GET' && pathname === '/api/cosmetics') {
+    const pid = url.searchParams.get('playerId')
+    if (!pid || !db[pid]) return json(res, 400, { error: 'invalid player' })
+    const defs = loadCosmeticsDef()
+    const playerCos = db[pid].cosmetics || {}
+    const merged = defs.map(d => ({ ...d, enabled: playerCos[d.id] === true }))
+    return json(res, 200, merged)
+  }
+
+  if (req.method === 'PUT' && pathname === '/api/cosmetics') {
+    const { playerId, cosmeticId, enabled } = await body(req)
+    if (!playerId || !db[playerId]) return json(res, 400, { error: 'invalid player' })
+    if (!cosmeticId) return json(res, 400, { error: 'cosmeticId required' })
+    if (!db[playerId].cosmetics) db[playerId].cosmetics = {}
+    db[playerId].cosmetics[cosmeticId] = !!enabled
+    saveDB(db)
+    return json(res, 200, { ok: true, cosmetics: db[playerId].cosmetics })
+  }
+
+  // Public: list all cosmetics definitions
+  if (pathname === '/api/cosmetics-defs') return json(res, 200, loadCosmeticsDef())
 
   // Friends list (per-player)
   if (req.method === 'GET' && pathname === '/api/friends') {
@@ -335,6 +373,7 @@ const server = createServer(async (req, res) => {
     if (!matches) return json(res, 400, { error: 'invalid image data' })
     const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
     const data = Buffer.from(matches[2], 'base64')
+    if (!existsSync(VERSIONS_DIR)) mkdirSync(VERSIONS_DIR, { recursive: true })
     const filename = `${version}.${ext}`
     const filepath = join(VERSIONS_DIR, filename)
     writeFileSync(filepath, data)
@@ -400,6 +439,84 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { ok: true })
   }
 
+  // ── Admin: Players / Cosmetics ──
+  if (req.method === 'GET' && pathname === '/api/admin/players') {
+    if (!requireAdmin(req, res)) return
+    const q = (url.searchParams.get('q') || '').toLowerCase()
+    const list = Object.values(db).map(p => ({
+      playerId: p.playerId,
+      username: p.username,
+      uuid: p.uuid,
+      createdAt: p.createdAt,
+      cosmetics: p.cosmetics || {},
+      friendsCount: (p.friends || []).length,
+      online: wsClients.has(p.playerId),
+    }))
+    const filtered = q ? list.filter(p => p.username.toLowerCase().includes(q) || (p.uuid || '').toLowerCase().includes(q)) : list
+    return json(res, 200, filtered)
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/admin/players/') && pathname.endsWith('/cosmetics')) {
+    if (!requireAdmin(req, res)) return
+    const playerId = pathname.replace('/api/admin/players/', '').replace('/cosmetics', '')
+    if (!db[playerId]) return json(res, 404, { error: 'player not found' })
+    const { cosmeticId, enabled } = await body(req)
+    if (cosmeticId) {
+      // Toggle a single cosmetic
+      if (!db[playerId].cosmetics) db[playerId].cosmetics = {}
+      db[playerId].cosmetics[cosmeticId] = !!enabled
+    } else {
+      // Full replace (legacy)
+      const { cosmetics } = await body(req)
+      db[playerId].cosmetics = cosmetics || {}
+    }
+    saveDB(db)
+    return json(res, 200, db[playerId].cosmetics)
+  }
+
+  // ── Admin: Cosmetics Definitions CRUD ──
+  if (req.method === 'GET' && pathname === '/api/admin/cosmetics') {
+    if (!requireAdmin(req, res)) return
+    return json(res, 200, loadCosmeticsDef())
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/cosmetics') {
+    if (!requireAdmin(req, res)) return
+    const d = await body(req)
+    if (!d.name) return json(res, 400, { error: 'name required' })
+    const defs = loadCosmeticsDef()
+    const entry = { id: d.id || `cosm_${Date.now()}`, name: d.name, type: d.type || 'other', value: d.value || '', desc: d.desc || '' }
+    defs.push(entry)
+    saveCosmeticsDef(defs)
+    return json(res, 200, entry)
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/admin/cosmetics/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/cosmetics/', '')
+    const d = await body(req)
+    const defs = loadCosmeticsDef()
+    const idx = defs.findIndex(c => c.id === id)
+    if (idx === -1) return json(res, 404, { error: 'cosmetic not found' })
+    if (d.name !== undefined) defs[idx].name = d.name
+    if (d.type !== undefined) defs[idx].type = d.type
+    if (d.value !== undefined) defs[idx].value = d.value
+    if (d.desc !== undefined) defs[idx].desc = d.desc
+    saveCosmeticsDef(defs)
+    return json(res, 200, defs[idx])
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/admin/cosmetics/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/cosmetics/', '')
+    let defs = loadCosmeticsDef()
+    const idx = defs.findIndex(c => c.id === id)
+    if (idx === -1) return json(res, 404, { error: 'cosmetic not found' })
+    defs.splice(idx, 1)
+    saveCosmeticsDef(defs)
+    return json(res, 200, { ok: true })
+  }
+
   // ── Admin: Blog ──
   if (req.method === 'GET' && pathname === '/api/admin/blog') {
     if (!requireAdmin(req, res)) return
@@ -409,12 +526,25 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/admin/blog') {
     if (!requireAdmin(req, res)) return
     const b = await body(req)
+    let imageUrl = b.image || ''
+    // Handle uploaded image file
+    if (b.imageFile && b.imageFile.startsWith('data:image/')) {
+      const matches = b.imageFile.match(/^data:image\/(\w+);base64,(.+)$/)
+      if (matches) {
+        const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
+        const data = Buffer.from(matches[2], 'base64')
+        if (!existsSync(BLOG_IMAGES_DIR)) mkdirSync(BLOG_IMAGES_DIR, { recursive: true })
+        const filename = `blog_${Date.now()}.${ext}`
+        writeFileSync(join(BLOG_IMAGES_DIR, filename), data)
+        imageUrl = `/media/blog/${filename}`
+      }
+    }
     const entry = {
       id: randomUUID().slice(0, 8),
       title: b.title || 'Untitled',
       content: b.content || '',
       excerpt: b.excerpt || '',
-      image: b.image || '',
+      image: imageUrl,
       tags: b.tags || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -430,6 +560,12 @@ const server = createServer(async (req, res) => {
     const all = loadBlog()
     const idx = all.findIndex(e => e.id === id)
     if (idx === -1) return json(res, 404, { error: 'not found' })
+    // Clean up associated image file
+    const img = all[idx].image
+    if (img && img.startsWith('/media/blog/')) {
+      const imgPath = join(__dirname, img)
+      if (existsSync(imgPath)) { try { writeFileSync(imgPath, '') } catch {} }
+    }
     all.splice(idx, 1)
     saveBlog(all)
     return json(res, 200, { ok: true })

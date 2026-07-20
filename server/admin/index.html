@@ -168,10 +168,14 @@ async function api(method, path, bodyData) {
   if (token) headers['Authorization'] = `Bearer ${token}`
   const opts = { method, headers }
   if (bodyData) opts.body = JSON.stringify(bodyData)
-  const r = await fetch(`${API}${path}`, opts)
-  const d = await r.json()
-  if (!r.ok && d.error === 'unauthorized') { token = null; sessionStorage.removeItem('admin_token'); render() }
-  return d
+  try {
+    const r = await fetch(`${API}${path}`, opts)
+    const d = await r.json()
+    if (!r.ok && d.error === 'unauthorized') { token = null; sessionStorage.removeItem('admin_token'); render() }
+    return d
+  } catch (e) {
+    return { error: 'Network error: ' + e.message }
+  }
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
@@ -213,6 +217,8 @@ function renderLayout() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
     { id: 'versions', label: 'Versions', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>' },
+    { id: 'players', label: 'Players', icon: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>' },
+    { id: 'cosmetics', label: 'Cosmetics', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
     { id: 'blog', label: 'Blog', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>' },
     { id: 'news', label: 'News', icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' },
   ]
@@ -272,6 +278,8 @@ async function renderMain() {
   switch (currentTab) {
     case 'dashboard': renderDashboard(el); break
     case 'versions': renderVersions(el); break
+    case 'players': renderPlayers(el); break
+    case 'cosmetics': renderCosmetics(el); break
     case 'blog': renderBlog(el); break
     case 'news': renderNews(el); break
   }
@@ -313,12 +321,14 @@ const VERSIONS = [
 ]
 
 async function renderVersions(el) {
-  const banners = await api('GET', '/api/admin/banners')
+  const [banners, versionMeta] = await Promise.all([
+    api('GET', '/api/admin/banners'),
+    api('GET', '/api/admin/versions').catch(() => []),
+  ])
   const bannerMap = {}
   if (Array.isArray(banners)) banners.forEach(b => { bannerMap[b.version] = b.image })
-  const versionMeta = Array.isArray(await api('GET', '/api/admin/versions').catch(() => [])) ? await api('GET', '/api/admin/versions').catch(() => []) : []
   const metaMap = {}
-  versionMeta.forEach(v => { metaMap[v.id] = v })
+  ;(Array.isArray(versionMeta) ? versionMeta : []).forEach(v => { metaMap[v.id] = v })
 
   el.innerHTML = `
     <div class="page-title">Version Manager</div>
@@ -412,7 +422,8 @@ async function uploadBanner(version, input) {
   const file = input.files[0]; if (!file) return
   const reader = new FileReader()
   reader.onload = async e => {
-    await api('PUT', `/api/admin/banners/${version}`, { image: e.target.result })
+    const r = await api('PUT', `/api/admin/banners/${version}`, { image: e.target.result })
+    if (r.error) { alert('Upload failed: ' + r.error); return }
     renderVersions(document.getElementById('main-content'))
   }
   reader.readAsDataURL(file)
@@ -422,6 +433,182 @@ async function deleteBanner(version) {
   if (!confirm(`Remove banner for ${version}?`)) return
   await api('DELETE', `/api/admin/banners/${version}`)
   renderVersions(document.getElementById('main-content'))
+}
+
+/* ── Players / Cosmetics ── */
+async function renderPlayers(el) {
+  const players = await api('GET', '/api/admin/players')
+  el.innerHTML = `
+    <div class="page-title">Players & Cosmetics</div>
+    <div style="margin-bottom:16px"><input id="player-search" placeholder="Search by username or UUID..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;font-size:13px;color:#e0e0e0;outline:none" oninput="renderPlayerList()" /></div>
+    <div id="player-list"></div>
+  `
+  renderPlayerList()
+  // Enable real-time search
+  setTimeout(() => document.getElementById('player-search')?.addEventListener('input', () => renderPlayerList()), 0)
+}
+
+let _allPlayers = []
+async function renderPlayerList() {
+  const el = document.getElementById('player-list')
+  if (!el) return
+  const q = (document.getElementById('player-search')?.value || '').toLowerCase()
+  if (!_allPlayers.length) _allPlayers = await api('GET', '/api/admin/players')
+  const filtered = q ? _allPlayers.filter(p => p.username.toLowerCase().includes(q) || (p.uuid || '').toLowerCase().includes(q)) : _allPlayers
+  el.innerHTML = `
+    <div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:8px">${filtered.length} player${filtered.length === 1 ? '' : 's'}</div>
+    <div class="card-list">
+      ${filtered.length === 0 ? '<div class="empty-state"><p>No players found</p></div>' : ''}
+      ${filtered.map(p => {
+        const c = p.cosmetics || {}
+        return `<div class="card-row">
+          <div style="flex:1;min-width:0">
+            <strong>${esc(p.username)}</strong>
+            <div style="font-size:11px;color:rgba(255,255,255,0.15);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              ID: ${p.playerId.slice(0,8)}… &middot; UUID: ${(p.uuid || '').slice(0,8)}… &middot; Joined ${new Date(p.createdAt).toLocaleDateString()}
+              ${c.theme ? ' &middot; Theme: ' + c.theme : ''}
+              ${c.bgUrl ? ' &middot; BG: yes' : ''}
+            </div>
+          </div>
+          <span style="font-size:10px;color:${p.online ? 'rgba(74,222,128,0.6)' : 'rgba(255,255,255,0.15)'};margin-right:8px">${p.online ? '● Online' : '○ Offline'}</span>
+          <button class="btn btn-sm" style="background:rgba(255,255,255,0.05)" onclick="showCosmeticsForm('${p.playerId}')">Cosmetics</button>
+        </div>`
+      }).join('')}
+    </div>
+  `
+}
+
+function showCosmeticsForm(playerId) {
+  const p = _allPlayers.find(x => x.playerId === playerId)
+  if (!p) return
+  Promise.all([
+    api('GET', '/api/admin/cosmetics'),
+    api('GET', '/api/cosmetics?playerId=' + playerId),
+  ]).then(([defs, state]) => {
+    const stateMap = {}
+    if (Array.isArray(state)) state.forEach(s => { stateMap[s.id] = s.enabled })
+    const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'cosmetics-modal'
+    overlay.innerHTML = `<div class="modal" style="width:560px">
+      <h3>Cosmetics &mdash; ${esc(p.username)}</h3>
+      <p style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:16px">Toggle cosmetics on/off for this player</p>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${(Array.isArray(defs) ? defs : []).map(d => {
+          const on = stateMap[d.id] === true
+          return `<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 14px">
+            <label style="position:relative;width:38px;height:22px;flex-shrink:0;cursor:pointer">
+              <input type="checkbox" style="display:none" ${on ? 'checked' : ''} onchange="toggleCosmetic('${playerId}','${d.id}',this.checked)" />
+              <span style="position:absolute;inset:0;background:${on ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.08)'};border-radius:11px;border:1px solid ${on ? 'rgba(74,222,128,0.4)' : 'rgba(255,255,255,0.1)'};transition:all 0.15s">
+                <span style="position:absolute;top:2px;left:${on ? '18px' : '2px'};width:16px;height:16px;border-radius:50%;background:${on ? '#4ade80' : 'rgba(255,255,255,0.3)'};transition:all 0.15s"></span>
+              </span>
+            </label>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500">${esc(d.name)}</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.2)">${esc(d.desc || d.type)}</div>
+            </div>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.3px">${d.type}</span>
+          </div>`
+        }).join('')}
+        ${(!Array.isArray(defs) || defs.length === 0) ? '<div class="empty-state"><p>No cosmetics defined yet. Go to the Cosmetics tab to create some.</p></div>' : ''}
+      </div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end">
+        <button class="btn" style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5)" onclick="closeModal('cosmetics-modal')">Close</button>
+      </div>
+    </div>`
+    document.body.appendChild(overlay)
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('cosmetics-modal') })
+  })
+}
+
+async function toggleCosmetic(playerId, cosmeticId, enabled) {
+  await api('PUT', `/api/admin/players/${playerId}/cosmetics`, { cosmeticId, enabled })
+  const p = _allPlayers.find(x => x.playerId === playerId)
+  if (p) {
+    if (!p.cosmetics) p.cosmetics = {}
+    p.cosmetics[cosmeticId] = enabled
+  }
+}
+
+/* ── Cosmetics Definitions ── */
+async function renderCosmetics(el) {
+  const defs = await api('GET', '/api/admin/cosmetics')
+  el.innerHTML = `
+    <div class="page-title">Cosmetics Definitions</div>
+    <p style="font-size:12px;color:rgba(255,255,255,0.25);margin-bottom:16px">Define cosmetics items that can be toggled on/off per player. Go to Players tab → click "Cosmetics" to assign them.</p>
+    <div class="list-header"><h3>${defs.length} items</h3><button class="btn btn-primary" onclick="showCosmeticForm()">+ New Cosmetic</button></div>
+    <div class="card-list">
+      ${defs.length === 0 ? '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><p>No cosmetics defined yet</p></div>' : ''}
+      ${defs.map(d => `<div class="card-row">
+        <div style="flex:1;min-width:0">
+          <strong>${esc(d.name)}</strong>
+          <div style="font-size:11px;color:rgba(255,255,255,0.2);margin-top:2px">
+            <span style="padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.04);font-size:10px;color:rgba(255,255,255,0.3)">${d.type}</span>
+            &nbsp;${esc(d.desc || '')} &middot; ID: ${d.id}
+          </div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.05)" onclick="showCosmeticForm('${d.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCosmetic('${d.id}')">Delete</button>
+      </div>`).join('')}
+    </div>
+  `
+}
+
+function showCosmeticForm(editId) {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'cosmetic-def-modal'
+  overlay.innerHTML = `<div class="modal">
+    <h3>${editId ? 'Edit Cosmetic' : 'New Cosmetic'}</h3>
+    ${!editId ? '<div class="form-group"><label>ID</label><input id="cd-id" placeholder="cosm_unique_name" /></div>' : `<input type="hidden" id="cd-id" value="${editId}" />`}
+    <div class="form-group"><label>Name</label><input id="cd-name" placeholder="Display name" /></div>
+    <div class="form-group"><label>Type</label>
+      <select id="cd-type">
+        <option value="theme">Theme</option>
+        <option value="cape">Cape</option>
+        <option value="bg">Background</option>
+        <option value="overlay">Overlay</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Value (optional, e.g. 'amoled' for theme)</label><input id="cd-value" placeholder="..." /></div>
+    <div class="form-group"><label>Description</label><input id="cd-desc" placeholder="Brief description" /></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveCosmeticDef('${editId || ''}')">${editId ? 'Save' : 'Create'}</button>
+      <button class="btn" style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5)" onclick="closeModal('cosmetic-def-modal')">Cancel</button>
+    </div>
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('cosmetic-def-modal') })
+  if (editId) {
+    api('GET', '/api/admin/cosmetics').then(list => {
+      const d = (Array.isArray(list) ? list : []).find(x => x.id === editId)
+      if (!d) return
+      document.getElementById('cd-name').value = d.name || ''
+      document.getElementById('cd-type').value = d.type || 'other'
+      document.getElementById('cd-value').value = d.value || ''
+      document.getElementById('cd-desc').value = d.desc || ''
+    })
+  }
+}
+
+async function saveCosmeticDef(editId) {
+  const data = {
+    id: document.getElementById('cd-id') ? document.getElementById('cd-id').value : editId,
+    name: document.getElementById('cd-name').value,
+    type: document.getElementById('cd-type').value,
+    value: document.getElementById('cd-value').value,
+    desc: document.getElementById('cd-desc').value,
+  }
+  if (editId) {
+    await api('PUT', `/api/admin/cosmetics/${editId}`, { name: data.name, type: data.type, value: data.value, desc: data.desc })
+  } else {
+    await api('POST', '/api/admin/cosmetics', data)
+  }
+  closeModal('cosmetic-def-modal')
+  renderCosmetics(document.getElementById('main-content'))
+}
+
+async function deleteCosmetic(id) {
+  if (!confirm(`Delete cosmetic "${id}"? This will not remove it from players, just the definition.`)) return
+  await api('DELETE', `/api/admin/cosmetics/${id}`)
+  renderCosmetics(document.getElementById('main-content'))
 }
 
 /* ── Blog ── */
@@ -446,7 +633,18 @@ function showBlogForm() {
     <h3>New Blog Post</h3>
     <div class="form-group"><label>Title</label><input id="blog-title" placeholder="Post title" /></div>
     <div class="form-group"><label>Excerpt</label><input id="blog-excerpt" placeholder="Short summary" /></div>
-    <div class="form-group"><label>Image URL</label><input id="blog-image" placeholder="https://..." /></div>
+    <div class="form-group"><label>Image (optional)</label><div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:4px">Upload from PC or paste a URL</div>
+      <div style="display:flex;gap:8px">
+        <label style="flex:1;padding:10px;border-radius:8px;border:1px dashed rgba(255,255,255,0.12);text-align:center;font-size:12px;cursor:pointer;background:rgba(255,255,255,0.02);transition:all 0.12s" id="blog-upload-label" onmouseover="this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:block;margin:0 auto 4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Choose File
+          <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" id="blog-image-file" onchange="setBlogImage(this)" />
+        </label>
+        <span style="color:rgba(255,255,255,0.1);align-self:center">or</span>
+        <input id="blog-image-url" placeholder="Paste URL..." style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px;font-size:13px;color:#e0e0e0;outline:none" />
+      </div>
+      <div id="blog-image-preview" style="margin-top:6px;display:none"></div>
+    </div>
     <div class="form-group"><label>Tags (comma separated)</label><input id="blog-tags" placeholder="update, news" /></div>
     <div class="form-group"><label>Content</label><textarea id="blog-content" placeholder="Write your post..."></textarea></div>
     <div class="form-actions">
@@ -456,16 +654,36 @@ function showBlogForm() {
   </div>`
   document.body.appendChild(overlay)
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('blog-modal') })
+  // Reset state
+  window._blogImageBase64 = ''
+}
+
+function setBlogImage(input) {
+  const file = input.files[0]; if (!file) return
+  const reader = new FileReader()
+  reader.onload = e => {
+    window._blogImageBase64 = e.target.result
+    document.getElementById('blog-image-url').value = ''
+    const preview = document.getElementById('blog-image-preview')
+    preview.innerHTML = `<img src="${e.target.result}" style="max-height:80px;border-radius:6px" />`
+    preview.style.display = 'block'
+    document.getElementById('blog-upload-label').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:block;margin:0 auto 2px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Change File<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" id="blog-image-file" onchange="setBlogImage(this)" />`
+  }
+  reader.readAsDataURL(file)
 }
 
 async function createBlog() {
+  const imageFile = window._blogImageBase64 || ''
+  const imageUrl = document.getElementById('blog-image-url').value
   await api('POST', '/api/admin/blog', {
     title: document.getElementById('blog-title').value,
     content: document.getElementById('blog-content').value,
     excerpt: document.getElementById('blog-excerpt').value,
-    image: document.getElementById('blog-image').value,
+    image: imageUrl,
+    imageFile: imageFile,
     tags: document.getElementById('blog-tags').value.split(',').map(s=>s.trim()).filter(Boolean),
   })
+  window._blogImageBase64 = ''
   closeModal('blog-modal'); renderBlog(document.getElementById('main-content'))
 }
 
