@@ -1,0 +1,52 @@
+{
+  "name": "string-client",
+  "version": "1.0.0",
+  "description": "String Client - Lightweight Minecraft Launcher with Custom Chat",
+  "main": "main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && electron-builder",
+    "start": "electron .",
+    "server": "node server/index.js",
+    "server:dev": "node --watch server/index.js",
+    "bot": "node server/discord-bot.js",
+    "bot:dev": "node --watch server/discord-bot.js"
+  },
+  "build": {
+    "appId": "com.stringclient.launcher",
+    "productName": "String Client",
+    "files": [
+      "main.js",
+      "preload.js",
+      "dist/**/*"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "jose": "^4.15.5",
+    "minecraft-launcher-core": "^3.2.1",
+    "sharp": "^0.35.3",
+    "skinview3d": "^3.4.2",
+    "smart-buffer": "^4.2.0",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "wait-on": "^7.2.0"
+  }
+}
