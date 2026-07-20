@@ -270,7 +270,7 @@ function getOnlineFriends() {
     .map(c => ({ name: c.username, id: c.playerId, activity: 'Playing String Client' }))
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[String Client] HTTP + WS on http://localhost:${PORT}`)
   console.log(`[String Client] ${Object.keys(db).length} registered players`)
 

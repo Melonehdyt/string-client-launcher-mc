@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { SkinViewer } from 'skinview3d'
 import logo from './assets/logo.png'
 
-const API = 'http://localhost:3001'
-const WS = 'ws://localhost:3001'
+const API = 'http://200.141.0.156:3000'
+const WS = 'ws://200.141.0.156:3000'
 
 type Tab = 'home' | 'instances' | 'mods' | 'chat' | 'friends' | 'profile' | 'settings'
 
@@ -659,7 +659,7 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
   const [news, setNews] = useState<any[]>([])
   const [selectedNews, setSelectedNews] = useState<any>(null)
   const fetchNews = () => {
-    fetch('http://localhost:3001/api/news')
+    fetch(`${API}/api/news`)
       .then(r => r.json()).then(d => {
         if (Array.isArray(d)) setNews(d.slice(0, 5))
       }).catch(() => {})
@@ -1080,7 +1080,6 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
 }) {
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
-  const API = 'http://localhost:3001'
 
   const searchPlayers = async (q: string) => {
     setSearchQ(q)
