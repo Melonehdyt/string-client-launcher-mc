@@ -35,7 +35,30 @@ function fetchSessionServerCape(uuid: string, setCapeUrl: (u: string) => void) {
     })
     .catch(e => console.error('Cape fetch error:', e))
 }
-const VERSIONS = ['1.21.4','1.21.1','1.20.4','1.20.1','1.19.4','1.18.2','1.17.1','1.16.5']
+const VERSIONS = [
+  { id: '1.21.4', label: '1.21.4', sub: 'The Garden Awakens', color: '#4ade80' },
+  { id: '1.21.3', label: '1.21.3', sub: 'Bundles of Bravery', color: '#a78bfa' },
+  { id: '1.21.1', label: '1.21.1', sub: 'Tricky Trials', color: '#60a5fa' },
+  { id: '1.21', label: '1.21', sub: 'Tricky Trials', color: '#f59e0b' },
+  { id: '1.20.6', label: '1.20.6', sub: 'Armored Paws', color: '#f472b6' },
+  { id: '1.20.4', label: '1.20.4', sub: 'Trails & Tales', color: '#38bdf8' },
+  { id: '1.20.1', label: '1.20.1', sub: 'Trails & Tales', color: '#c084fc' },
+  { id: '1.19.4', label: '1.19.4', sub: 'Trails & Tales', color: '#34d399' },
+  { id: '1.19.2', label: '1.19.2', sub: 'Wild Update', color: '#fb923c' },
+  { id: '1.18.2', label: '1.18.2', sub: 'Caves & Cliffs', color: '#f472b6' },
+  { id: '1.17.1', label: '1.17.1', sub: 'Caves & Cliffs', color: '#38bdf8' },
+  { id: '1.16.5', label: '1.16.5', sub: 'Nether Update', color: '#ef4444' },
+  { id: '1.15.2', label: '1.15.2', sub: 'Buzzy Bees', color: '#fbbf24' },
+  { id: '1.14.4', label: '1.14.4', sub: 'Village & Pillage', color: '#f59e0b' },
+  { id: '1.13.2', label: '1.13.2', sub: 'Update Aquatic', color: '#2dd4bf' },
+  { id: '1.12.2', label: '1.12.2', sub: 'World of Color', color: '#c084fc' },
+  { id: '1.11.2', label: '1.11.2', sub: 'Exploration Update', color: '#4ade80' },
+  { id: '1.10.2', label: '1.10.2', sub: 'Frostburn Update', color: '#60a5fa' },
+  { id: '1.9.4', label: '1.9.4', sub: 'Combat Update', color: '#f472b6' },
+  { id: '1.8.9', label: '1.8.9', sub: 'Bountiful Update', color: '#ef4444' },
+]
+const INSTANCE_COLORS = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#f472b6','#38bdf8','#ef4444','#fb923c','#a78bfa','#2dd4bf','#fbbf24','#818cf8']
+const VERSION_BANNERS_API = `${API}/api/version-banners`
 const DEFAULT_SERVERS = [
   { name: 'Hypixel', online: '54.2k' }, { name: 'GommeHD', online: '18.7k' },
   { name: 'Mineplex', online: '6.2k' }, { name: 'CubeCraft', online: '4.8k' },
@@ -674,10 +697,10 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
       <div className="home-main">
         <div className="panel hero-card">
           <div className="hero-body">
-            <div className="hero-sub">{launchPid ? 'Running' : 'Ready to play'}</div>
+            <div className="hero-sub"><span className={`status-dot ${launchPid ? 'running' : ''}`} />{launchPid ? 'Running' : 'Ready to Play'}</div>
             <h1 className="hero-title">Welcome back, {username}</h1>
             <div className="hero-tags">
-              <span className="hero-tag">{selectedVer}</span>
+              <span className="hero-tag">{(VERSIONS.find(v => v.id === selectedVer) || { label: selectedVer }).label}</span>
               <span className="hero-tag">Fabric</span>
             </div>
             {launchPid ? (
@@ -794,70 +817,215 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
   instances: any[]; onAdd: (i: any) => void; onRemove: (id: number) => void
   onLaunch: (v: string) => void; launching: boolean; launchPid: number | null; onKill: () => void
 }) {
-  const [name, setName] = useState('My Instance')
-  const [selectedIcon, setSelectedIcon] = useState('🌲')
+  const [name, setName] = useState('')
+  const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0])
+  const [selectedLoader, setSelectedLoader] = useState('Fabric')
   const [res, setRes] = useState('1280x720')
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [banners, setBanners] = useState<Record<string, string>>({})
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState('Popular')
+  const loaders = ['Vanilla', 'Fabric', 'Forge']
+
+  useEffect(() => {
+    fetch(VERSION_BANNERS_API, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).then(d => {
+      const map: Record<string, string> = {}
+      for (const [ver, path] of Object.entries(d)) {
+        map[ver] = `${API}${path}`
+      }
+      setBanners(map)
+    }).catch(() => {})
+  }, [])
 
   const createInstance = () => {
-    onAdd({ name, version: selectedVer, icon: selectedIcon, resolution: res })
-    setName('My Instance')
+    const displayName = name.trim() || 'Instance'
+    onAdd({ name: displayName, version: selectedVer, icon: selectedColor, resolution: res, loader: selectedLoader })
+    setName('')
   }
 
   const launchInstance = (inst: any) => {
     onLaunch(inst.version)
   }
 
+  const getVersionInfo = (ver: string) => VERSIONS.find(v => v.id === ver) || { label: ver, sub: '', color: '#888' }
+
+  const getBanner = (vId: string) => banners[vId]
+  const selected = getVersionInfo(selectedVer)
+  const bannerUrl = getBanner(selectedVer)
+
+  const filteredVersions = VERSIONS.slice().filter(v =>
+    v.label.toLowerCase().includes(search.toLowerCase())
+  ).sort((a, b) => {
+    if (sort === 'Oldest') return a.id.localeCompare(b.id)
+    if (sort === 'Newest') return b.id.localeCompare(a.id)
+    return b.id.localeCompare(a.id)
+  })
+
   return (
-    <div className="tab-wrap" style={{ maxWidth: 'none' }}>
-      <h2 className="tab-title">Instances</h2>
-      <div className="instance-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 14 }}>
-        <div className="panel" style={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
-          <div className="panel-title">Saved Instances</div>
-          {instances.length === 0 ? (
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', padding: '6px 0' }}>No instances yet. Create one!</div>
-          ) : instances.map(inst => (
-            <div key={inst.id} className={`inst-item ${editingId === inst.id ? 'active' : ''}`} onClick={() => setEditingId(inst.id)}>
-              <span className="inst-icon" style={{ fontSize: 20 }}>{inst.icon || '🌲'}</span>
-              <div className="inst-info">
-                <span className="inst-name">{inst.name}</span>
-                <span className="inst-meta">{inst.version} &middot; {inst.resolution || '1280x720'}</span>
-              </div>
-              <button className="promo-sub" style={{ padding: '3px 8px', fontSize: 9 }} onClick={e => { e.stopPropagation(); launchInstance(inst) }} disabled={launching}>
-                {launching ? '...' : 'Play'}
-              </button>
-              <button style={{ background: 'none', border: 'none', color: 'rgba(255,100,100,0.5)', cursor: 'pointer', fontSize: 11, padding: '2px 4px' }} onClick={e => { e.stopPropagation(); onRemove(inst.id) }}>&#x2715;</button>
+    <div className="inst-wrap">
+      {/* Top bar */}
+      <div className="inst-topbar">
+        <div className="inst-topbar-left">
+          <div className="inst-logo">
+            <div className="inst-logo-icon" />
+            <span>String</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+        <div className="inst-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search versions..." />
+        </div>
+        <div className="inst-topbar-right">
+          <select className="inst-sort" value={sort} onChange={e => setSort(e.target.value)}>
+            <option>Popular</option>
+            <option>Newest</option>
+            <option>Oldest</option>
+          </select>
+          <button className="inst-profile-btn">
+            <div className="inst-avatar" />
+            View Profile
+          </button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="inst-main">
+        {/* Version card grid */}
+        <div className="inst-grid-wrap">
+          <div className="inst-card-grid">
+            {filteredVersions.map(v => {
+              const b = getBanner(v.id)
+              const isSel = selectedVer === v.id
+              return (
+                <button key={v.id} onClick={() => setSelectedVer(v.id)} className={`inst-card${isSel ? ' active' : ''}`}>
+                  <div className="inst-card-bg" style={{ background: `linear-gradient(145deg, ${v.color}44 0%, ${v.color}22 35%, rgba(10,10,15,0.85) 100%)` }} />
+                  {b && <img src={b} alt={v.label} className="inst-card-img" />}
+                  <span className="inst-card-wm">{v.id}</span>
+                  <div className="inst-card-overlay" />
+                  <span className="inst-card-label">{v.label}</span>
+                  <span className="inst-card-sub">{v.sub}</span>
+                  {isSel && (
+                    <div className="inst-card-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg></div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          {filteredVersions.length === 0 && (
+            <div className="inst-empty">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <p>No versions found</p>
             </div>
-          ))}
+          )}
         </div>
 
-        <div className="instance-edit">
-          <div className="panel"><div className="panel-title">Instance Settings</div>
-            <div className="set-row"><span className="set-label">Name</span><input className="set-input" style={{ width: 200 }} value={name} onChange={e => setName(e.target.value)} /></div>
-            <div className="set-row"><span className="set-label">Resolution</span>
-              <select className="set-input" style={{ width: 110 }} value={res} onChange={e => setRes(e.target.value)}>
-                <option>854x480</option><option>1280x720</option><option>1920x1080</option>
-              </select>
+        {/* Right sidebar */}
+        <div className="inst-side">
+          <div className="inst-side-header">Selected Version</div>
+
+          <div className="inst-side-preview">
+            <div className="inst-side-preview-bg" style={{ background: `linear-gradient(145deg, ${selected.color}55, ${selected.color}22, rgba(10,10,15,0.9))` }} />
+            {bannerUrl && <img src={bannerUrl} alt={selected.label} className="inst-side-preview-img" />}
+            <div className="inst-side-preview-grad" />
+          </div>
+
+          <div className="inst-side-info">
+            <div className="inst-side-version">
+              <div className="inst-side-dot" style={{ background: selected.color }} />
+              <span className="inst-side-name">Minecraft {selected.label}</span>
+            </div>
+            <p className="inst-side-desc">{selected.sub}</p>
+            <div className="inst-side-status">
+              <div className="inst-side-status-dot" />
+              <span>using global minecraft</span>
             </div>
           </div>
-          <div className="panel"><div className="panel-title">Version</div>
-            <div className="ver-picker">
-              {VERSIONS.map(v => (
-                <button key={v} className={`ver-btn ${selectedVer === v ? 'active' : ''}`} onClick={() => setSelectedVer(v)}>{v}</button>
-              ))}
+
+          <div className="inst-side-controls">
+            <div className="inst-field">
+              <label>Version</label>
+              <div className="inst-field-row">
+                <select value={selectedVer} onChange={e => setSelectedVer(e.target.value)} className="inst-select">
+                  {VERSIONS.slice().reverse().map(v => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
+                  ))}
+                </select>
+                <button className="inst-gear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+              </div>
             </div>
-            <div style={{ marginTop: 14 }}>
-              <div className="panel-title" style={{ marginBottom: 8 }}>Icon</div>
-              <div className="puzzle-grid">
-                {['🌲','⛰️','🏜️','🏔️','🌊','🌋','🏝️','🏯','🏰','🌺','🍄','🌟'].map((e, i) => (
-                  <div key={i} className={`puzzle-icon ${selectedIcon === e ? 'active' : ''}`} onClick={() => setSelectedIcon(e)}>{e}</div>
+
+            <div className="inst-field">
+              <label>Loader</label>
+              <div className="inst-loader-row">
+                {loaders.map(l => (
+                  <button key={l} className={`inst-loader-btn${selectedLoader === l ? ' active' : ''}`} onClick={() => setSelectedLoader(l)}>{l}</button>
                 ))}
               </div>
             </div>
+
+            <div className="inst-field">
+              <label>Resolution</label>
+              <select value={res} onChange={e => setRes(e.target.value)} className="inst-select">
+                <option>854x480</option><option>1280x720</option><option>1920x1080</option>
+              </select>
+            </div>
+
+            <div className="inst-field">
+              <label>Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="My Instance" className="inst-input" />
+            </div>
+
+            <div className="inst-field">
+              <label>Accent</label>
+              <div className="inst-color-row">
+                {INSTANCE_COLORS.map(c => (
+                  <div key={c} onClick={() => setSelectedColor(c)} className={`inst-color-dot${selectedColor === c ? ' active' : ''}`} style={{ background: c }} />
+                ))}
+              </div>
+            </div>
+
+            <button className="inst-launch-btn" onClick={createInstance}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><circle cx="12" cy="12" r="10"/></svg>
+              Create Instance
+            </button>
+
+            <div className="inst-side-footer">
+              <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Settings</button>
+              <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>About</button>
+            </div>
           </div>
-          <button className="hero-btn" style={{ alignSelf: 'flex-start' }} onClick={createInstance}>
-            Create Instance
-          </button>
+
+          <div className="inst-side-instances">
+            <div className="inst-side-instances-hdr">
+              <span>Your Instances</span>
+              <span className="inst-side-instances-n">{instances.length}</span>
+            </div>
+            {instances.length === 0 ? (
+              <div className="inst-side-empty">
+                <div className="inst-side-empty-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+                <p>No instances yet</p>
+                <span>Configure above and create one</span>
+              </div>
+            ) : (
+              <div className="inst-side-instance-list">
+                {instances.map(inst => {
+                  const vi = getVersionInfo(inst.version)
+                  const color = inst.icon || vi.color
+                  return (
+                    <div key={inst.id} className="inst-side-instance-row">
+                      <div className="inst-side-instance-icon" style={{ background: `linear-gradient(135deg, ${color}44, ${color}22)`, borderColor: `${color}33`, color }}>{inst.name[0]}</div>
+                      <div className="inst-side-instance-info">
+                        <div className="inst-side-instance-name">{inst.name}</div>
+                        <div className="inst-side-instance-meta">{inst.version} &middot; {inst.loader || 'Fabric'}</div>
+                      </div>
+                      <button className="inst-side-play-btn" disabled={launching} onClick={() => launchInstance(inst)}>{launching ? '...' : 'Play'}</button>
+                      <button className="inst-side-del-btn" onClick={() => onRemove(inst.id)}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1080,25 +1248,35 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
 }) {
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
+  const [friendError, setFriendError] = useState('')
+  const [addingFriend, setAddingFriend] = useState('')
 
   const searchPlayers = async (q: string) => {
     setSearchQ(q)
+    setFriendError('')
     if (q.trim().length < 1) { setSearchResults([]); return }
     try {
       const r = await fetch(`${API}/api/players/search?q=${encodeURIComponent(q)}`)
       const d = await r.json()
-      setSearchResults(Array.isArray(d) ? d.filter((p: any) => p.id !== playerId) : [])
-    } catch { setSearchResults([]) }
+      const results = Array.isArray(d) ? d.filter((p: any) => p.id !== playerId) : []
+      setSearchResults(results)
+      if (results.length === 0) setFriendError('No players found')
+    } catch { setSearchResults([]); setFriendError('Failed to search') }
   }
 
   const addFriend = async (friendId: string) => {
+    setAddingFriend(friendId)
+    setFriendError('')
     try {
-      await fetch(`${API}/api/friends/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
-      const r = await fetch(`${API}/api/friends?playerId=${playerId}`)
+      const r = await fetch(`${API}/api/friends/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
       const d = await r.json()
-      if (Array.isArray(d)) setFriends(d)
+      if (!r.ok || d.error) { setFriendError(d.error || 'Failed to add'); setAddingFriend(''); return }
+      const r2 = await fetch(`${API}/api/friends?playerId=${playerId}`)
+      const d2 = await r2.json()
+      if (Array.isArray(d2)) setFriends(d2)
       setSearchQ(''); setSearchResults([])
-    } catch {}
+    } catch { setFriendError('Network error — is the server online?') }
+    setAddingFriend('')
   }
 
   const removeFriend = async (friendId: string) => {
@@ -1125,6 +1303,11 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
         <div style={{ display: 'flex', gap: 6 }}>
           <input className="modrinth-search" style={{ flex: 1 }} placeholder="Search by username..." value={searchQ} onChange={e => searchPlayers(e.target.value)} />
         </div>
+        {friendError && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,100,100,0.7)', padding: '4px 8px', background: 'rgba(255,100,100,0.08)', borderRadius: 6 }}>
+            {friendError}
+          </div>
+        )}
         {searchResults.length > 0 && (
           <div style={{ marginTop: 8 }}>
             {searchResults.map(p => (
@@ -1134,7 +1317,9 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
                   <div className="friend-name">{p.name}</div>
                   <div className="friend-act" style={{ color: 'rgba(255,255,255,0.25)' }}>Click to send request</div>
                 </div>
-                <button className="promo-sub" style={{ padding: '4px 10px', fontSize: 10 }} onClick={e => { e.stopPropagation(); addFriend(p.id) }}>+ Add</button>
+                <button className="promo-sub" style={{ padding: '4px 10px', fontSize: 10 }} disabled={addingFriend === p.id} onClick={e => { e.stopPropagation(); addFriend(p.id) }}>
+                  {addingFriend === p.id ? '...' : '+ Add'}
+                </button>
               </div>
             ))}
           </div>

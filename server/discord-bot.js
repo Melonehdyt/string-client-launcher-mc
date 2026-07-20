@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } from 'discord.js'
 import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join } from 'path'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: join(__dirname, '.env') })
 
@@ -10,7 +11,7 @@ const NEWS_CHANNEL_ID = process.env.NEWS_CHANNEL_ID || ''
 
 if (!BOT_TOKEN) { console.error('Missing DISCORD_BOT_TOKEN env'); process.exit(1) }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] })
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildMembers] })
 
 client.once('ready', async () => {
   console.log(`[Discord Bot] Logged in as ${client.user.tag}`)
@@ -39,9 +40,28 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands })
     console.log('[Discord Bot] Slash commands registered')
   } catch (e) { console.error('Failed to register commands:', e) }
+
+  // Lanyard: fetch initial presences for all guild members
+  console.log('[Lanyard] Fetching initial presences for all guild members...')
+  const data = loadPresence()
+  let total = 0
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await guild.members.fetch()
+      for (const [, member] of guild.members.cache) {
+        if (member.presence) {
+          data[member.id] = formatPresence(member.presence)
+          total++
+        }
+      }
+    } catch (e) { console.error('[Lanyard] fetch error', e.message) }
+  }
+  savePresence(data)
+  console.log(`[Lanyard] Initial presence data saved for ${total} members`)
 })
 
 const ALLOWED_ROLE_IDS = [
+  '1525047958553366600',
   '1524856161697005598',
   '1506634520017764493',
   '1506634289381380328',
@@ -162,6 +182,52 @@ client.on('interactionCreate', async interaction => {
       await interaction.editReply(`Error: ${e.message}`)
     }
   }
+})
+
+// ── Lanyard Presence Tracking ──
+const PRESENCE_PATH = join(__dirname, 'presence.json')
+
+function loadPresence() {
+  if (!existsSync(PRESENCE_PATH)) return {}
+  try { return JSON.parse(readFileSync(PRESENCE_PATH, 'utf8')) } catch { return {} }
+}
+function savePresence(p) { writeFileSync(PRESENCE_PATH, JSON.stringify(p, null, 2), 'utf8') }
+
+function formatPresence(presence) {
+  if (!presence) return null
+  const activity = presence.activities?.[0] || null
+  return {
+    userId: presence.userId,
+    discord_status: presence.status || 'offline',
+    activities: (presence.activities || []).map(a => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      state: a.state || null,
+      details: a.details || null,
+      timestamps: a.timestamps || null,
+      assets: a.assets ? {
+        large_image: a.assets.largeImageURL?.() || null,
+        large_text: a.assets.largeText || null,
+        small_image: a.assets.smallImageURL?.() || null,
+        small_text: a.assets.smallText || null,
+      } : null,
+      party: a.party || null,
+      emoji: a.emoji ? { id: a.emoji.id, name: a.emoji.name, animated: a.emoji.animated } : null,
+    })),
+    active_on_discord_web: presence.clientStatus?.web === 'online',
+    active_on_discord_desktop: presence.clientStatus?.desktop === 'online',
+    active_on_discord_mobile: presence.clientStatus?.mobile === 'online',
+    kv: {},
+    listening_to_spotify: null,
+  }
+}
+
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  if (!newPresence) return
+  const data = loadPresence()
+  data[newPresence.userId] = formatPresence(newPresence)
+  savePresence(data)
 })
 
 client.login(BOT_TOKEN)

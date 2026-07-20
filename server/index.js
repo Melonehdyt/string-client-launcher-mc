@@ -1,5 +1,5 @@
-import { randomUUID } from 'crypto'
-import { readFileSync, writeFileSync, existsSync, statSync } from 'fs'
+import { randomUUID, createHash } from 'crypto'
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'fs'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join, extname } from 'path'
@@ -7,8 +7,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: join(__dirname, '.env') })
 
 const PORT = +process.env.PORT || 3001
-const DB_PATH = './players.json'
-const NEWS_PATH = './news.json'
+const DB_PATH = join(__dirname, 'players.json')
+const NEWS_PATH = join(__dirname, 'news.json')
+const BLOG_PATH = join(__dirname, 'blog.json')
+const BANNER_INDEX = join(__dirname, 'media', 'versions', 'index.json')
+const VERSIONS_DIR = join(__dirname, 'media', 'versions')
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'
 
 function loadDB() {
   if (!existsSync(DB_PATH)) return {}
@@ -22,17 +26,54 @@ function loadNews() {
 }
 function saveNews(n) { writeFileSync(NEWS_PATH, JSON.stringify(n, null, 2), 'utf8') }
 
+function loadBlog() {
+  if (!existsSync(BLOG_PATH)) return []
+  try { return JSON.parse(readFileSync(BLOG_PATH, 'utf8')) } catch { return [] }
+}
+function saveBlog(b) { writeFileSync(BLOG_PATH, JSON.stringify(b, null, 2), 'utf8') }
+
+function loadBannerIndex() {
+  if (!existsSync(BANNER_INDEX)) return {}
+  try { return JSON.parse(readFileSync(BANNER_INDEX, 'utf8')) } catch { return {} }
+}
+function saveBannerIndex(idx) {
+  if (!existsSync(VERSIONS_DIR)) mkdirSync(VERSIONS_DIR, { recursive: true })
+  writeFileSync(BANNER_INDEX, JSON.stringify(idx, null, 2), 'utf8')
+}
+
 const db = loadDB()
 const news = loadNews()
+const blog = loadBlog()
 
 const BOT_TOKEN = process.env.BOT_TOKEN || 'discord-bot-secret-2024'
+
+// Discord OAuth2 admin auth
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || ''
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || ''
+const ADMIN_GUILD_ID = process.env.ADMIN_DISCORD_GUILD_ID || ''
+const ADMIN_ROLE_IDS = (process.env.ADMIN_DISCORD_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+const OAUTH_REDIRECT = `${process.env.API_URL || `http://localhost:${PORT}`}/api/admin/auth/callback`
+const adminTokens = new Set()
+
+function makeToken() { return createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32) }
+
+async function verifyDiscordGuild(userId) {
+  const mr = await fetch(`https://discord.com/api/guilds/${ADMIN_GUILD_ID}/members/${userId}`, {
+    headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN || ''}` }
+  })
+  if (!mr.ok) return null
+  const member = await mr.json()
+  if (!ADMIN_ROLE_IDS.length) return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID }
+  if (!member.roles || !member.roles.some(r => ADMIN_ROLE_IDS.includes(r))) return null
+  return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID }
+}
 
 function json(res, status, data) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(data))
 }
@@ -43,6 +84,14 @@ function body(req) {
     req.on('data', c => data += c)
     req.on('end', () => { try { resolve(JSON.parse(data)) } catch { resolve({}) } })
   })
+}
+
+function requireAdmin(req, res) {
+  const auth = req.headers.authorization
+  if (!auth) { json(res, 401, { error: 'unauthorized' }); return false }
+  const token = auth.replace('Bearer ', '')
+  if (!adminTokens.has(token)) { json(res, 401, { error: 'invalid token' }); return false }
+  return true
 }
 
 // ── HTTP Server ──
@@ -142,7 +191,236 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { ok: true })
   }
 
+  // Version banners index
+  if (pathname === '/api/version-banners') {
+    const indexFile = join(__dirname, 'media', 'versions', 'index.json')
+    if (existsSync(indexFile)) {
+      const data = JSON.parse(readFileSync(indexFile, 'utf8'))
+      return json(res, 200, data)
+    }
+    return json(res, 200, {})
+  }
+
   if (pathname === '/api/health') return json(res, 200, { status: 'ok', players: Object.keys(db).length })
+
+  // Lanyard: get presence for a specific user
+  if (pathname.startsWith('/api/lanyard/')) {
+    const userId = pathname.replace('/api/lanyard/', '')
+    const presPath = join(__dirname, 'presence.json')
+    if (!existsSync(presPath)) return json(res, 404, { error: 'no presence data' })
+    const all = JSON.parse(readFileSync(presPath, 'utf8'))
+    if (!all[userId]) return json(res, 404, { error: 'user not found' })
+    return json(res, 200, { data: all[userId] })
+  }
+
+  // Lanyard: list all tracked users' presence
+  if (pathname === '/api/lanyard') {
+    const presPath = join(__dirname, 'presence.json')
+    if (!existsSync(presPath)) return json(res, 200, [])
+    const all = JSON.parse(readFileSync(presPath, 'utf8'))
+    return json(res, 200, Object.values(all).filter(Boolean))
+  }
+
+  // ── Admin Auth (Discord OAuth2) ──
+  if (pathname === '/api/admin/auth/discord') {
+    if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) return json(res, 500, { error: 'Discord OAuth2 not configured' })
+    const params = new URLSearchParams({
+      client_id: DISCORD_CLIENT_ID,
+      redirect_uri: OAUTH_REDIRECT,
+      response_type: 'code',
+      scope: 'identify guilds',
+    })
+    res.writeHead(302, { Location: `https://discord.com/api/oauth2/authorize?${params}` })
+    res.end()
+    return
+  }
+
+  if (pathname === '/api/admin/auth/callback') {
+    const code = url.searchParams.get('code')
+    if (!code) return json(res, 400, { error: 'no code' })
+    // Exchange code for token
+    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: DISCORD_CLIENT_ID,
+        client_secret: DISCORD_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: OAUTH_REDIRECT,
+      })
+    })
+    if (!tokenRes.ok) return json(res, 400, { error: 'failed to exchange code' })
+    const tokens = await tokenRes.json()
+    // Fetch user info to get their Discord ID
+    const userRes = await fetch('https://discord.com/api/users/@me', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    })
+    if (!userRes.ok) return json(res, 400, { error: 'failed to fetch user' })
+    const user = await userRes.json()
+    const info = await verifyDiscordGuild(user.id)
+    if (!info) return json(res, 403, { error: 'not authorized — you must be in the admin Discord server' })
+    const token = makeToken()
+    adminTokens.add(token)
+    // Redirect back to admin panel with token in URL hash
+    res.writeHead(302, { Location: `/admin#token=${token}` })
+    res.end()
+    return
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/auth/check') {
+    if (!requireAdmin(req, res)) return
+    return json(res, 200, { ok: true })
+  }
+
+  // Admin password fallback (for when Discord OAuth2 isn't configured)
+  if (req.method === 'POST' && pathname === '/api/admin/login') {
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
+    if (!ADMIN_PASSWORD) return json(res, 403, { error: 'password login not configured' })
+    const { password } = await body(req)
+    if (password !== ADMIN_PASSWORD) return json(res, 403, { error: 'wrong password' })
+    const token = makeToken()
+    adminTokens.add(token)
+    return json(res, 200, { token })
+  }
+
+  // ── Admin: Banners ──
+  if (pathname === '/api/admin/banners') {
+    if (!requireAdmin(req, res)) return
+    const index = loadBannerIndex()
+    // List all versions with current image status
+    const list = Object.keys(index).map(v => ({ version: v, image: index[v] }))
+    return json(res, 200, list)
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/admin/banners/')) {
+    if (!requireAdmin(req, res)) return
+    const version = pathname.replace('/api/admin/banners/', '')
+    const { image } = await body(req)
+    if (!image) return json(res, 400, { error: 'image data required' })
+    // image is base64: "data:image/png;base64,..."
+    const matches = image.match(/^data:image\/(\w+);base64,(.+)$/)
+    if (!matches) return json(res, 400, { error: 'invalid image data' })
+    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
+    const data = Buffer.from(matches[2], 'base64')
+    const filename = `${version}.${ext}`
+    const filepath = join(VERSIONS_DIR, filename)
+    writeFileSync(filepath, data)
+    const index = loadBannerIndex()
+    index[version] = `/media/versions/${filename}`
+    saveBannerIndex(index)
+    return json(res, 200, { version, image: index[version] })
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/admin/banners/')) {
+    if (!requireAdmin(req, res)) return
+    const version = pathname.replace('/api/admin/banners/', '')
+    const index = loadBannerIndex()
+    if (index[version]) {
+      const oldPath = join(__dirname, index[version])
+      if (existsSync(oldPath)) { try { writeFileSync(oldPath, '') } catch {} }
+      delete index[version]
+      saveBannerIndex(index)
+    }
+    return json(res, 200, { ok: true })
+  }
+
+  // ── Admin: Blog ──
+  if (req.method === 'GET' && pathname === '/api/admin/blog') {
+    if (!requireAdmin(req, res)) return
+    const all = loadBlog().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    return json(res, 200, all)
+  }
+  if (req.method === 'POST' && pathname === '/api/admin/blog') {
+    if (!requireAdmin(req, res)) return
+    const b = await body(req)
+    const entry = {
+      id: randomUUID().slice(0, 8),
+      title: b.title || 'Untitled',
+      content: b.content || '',
+      excerpt: b.excerpt || '',
+      image: b.image || '',
+      tags: b.tags || [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    const all = loadBlog()
+    all.unshift(entry)
+    saveBlog(all)
+    return json(res, 200, entry)
+  }
+  if (req.method === 'DELETE' && pathname.startsWith('/api/admin/blog/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/blog/', '')
+    const all = loadBlog()
+    const idx = all.findIndex(e => e.id === id)
+    if (idx === -1) return json(res, 404, { error: 'not found' })
+    all.splice(idx, 1)
+    saveBlog(all)
+    return json(res, 200, { ok: true })
+  }
+
+  // Public blog list (for launcher/website)
+  if (req.method === 'GET' && pathname === '/api/blog') {
+    const all = loadBlog().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 20)
+    return json(res, 200, all)
+  }
+
+  // ── Admin: News ──
+  if (req.method === 'GET' && pathname === '/api/admin/news') {
+    if (!requireAdmin(req, res)) return
+    const all = loadNews().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    return json(res, 200, all)
+  }
+  if (req.method === 'POST' && pathname === '/api/admin/news') {
+    if (!requireAdmin(req, res)) return
+    const b = await body(req)
+    const entry = {
+      id: randomUUID().slice(0, 8),
+      title: b.title || 'Untitled',
+      text: b.text || '',
+      image: b.image || '',
+      tag: b.tag || 'Update',
+      link: b.link || '',
+      createdAt: new Date().toISOString(),
+    }
+    const all = loadNews()
+    all.unshift(entry)
+    saveNews(all)
+    return json(res, 200, entry)
+  }
+  if (req.method === 'DELETE' && pathname.startsWith('/api/admin/news/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/news/', '')
+    const all = loadNews()
+    const idx = all.findIndex(e => e.id === id)
+    if (idx === -1) return json(res, 404, { error: 'not found' })
+    all.splice(idx, 1)
+    saveNews(all)
+    return json(res, 200, { ok: true })
+  }
+
+  // ── Admin: Dashboard stats ──
+  if (pathname === '/api/admin/stats') {
+    if (!requireAdmin(req, res)) return
+    return json(res, 200, {
+      players: Object.keys(db).length,
+      news: loadNews().length,
+      blog: loadBlog().length,
+      banners: Object.keys(loadBannerIndex()).length,
+      online: Array.from(wsClients.values()).filter(c => c.username && c.username !== 'Guest').length,
+    })
+  }
+
+  // Serve admin panel
+  if (pathname === '/admin') {
+    const file = join(__dirname, 'admin', 'index.html')
+    if (!existsSync(file)) { json(res, 404, { error: 'admin panel not found' }); return }
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    const { createReadStream: rs } = await import('fs')
+    rs(file).pipe(res)
+    return
+  }
 
   if (pathname === '/' || pathname === '/index.html') {
     const file = join(__dirname, 'public', 'index.html')
