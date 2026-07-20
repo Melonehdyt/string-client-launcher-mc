@@ -449,7 +449,10 @@ const server = createServer(async (req, res) => {
     const range = req.headers.range
     if (range) {
       const [start, end] = range.replace('bytes=', '').split('-').map(Number)
-      const s = start || 0, e = end || stat.size - 1
+      let s = !isNaN(start) && start >= 0 ? start : 0
+      let e = !isNaN(end) && end >= 0 ? end : stat.size - 1
+      if (s > e) s = 0
+      if (e >= stat.size) e = stat.size - 1
       const chunk = e - s + 1
       const { createReadStream: rs } = await import('fs')
       res.writeHead(206, {
