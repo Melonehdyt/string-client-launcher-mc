@@ -34,4 +34,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listProfiles: () => ipcRenderer.invoke('mc:list-profiles'),
   listLibraries: (v) => ipcRenderer.invoke('mc:list-libraries', v),
   listJres: () => ipcRenderer.invoke('mc:list-jres'),
+  deleteProfile: (version) => ipcRenderer.invoke('mc:delete-profile', version),
 });

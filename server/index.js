@@ -73,11 +73,9 @@ function loadVersions() {
 function saveVersions(v) { writeFileSync(VERSIONS_PATH, JSON.stringify(v, null, 2), 'utf8') }
 
 const DEFAULT_COSMETICS = [
-  { id:'cosm_dark', name:'Dark Theme', type:'theme', value:'dark', desc:'Dark glassmorphism theme' },
-  { id:'cosm_amoled', name:'AMOLED Theme', type:'theme', value:'amoled', desc:'Pure black AMOLED theme' },
-  { id:'cosm_mocha', name:'Mocha Theme', type:'theme', value:'mocha', desc:'Warm dark theme' },
-  { id:'cosm_cape1', name:'Classic Cape', type:'cape', value:'', desc:'First cape slot' },
-  { id:'cosm_cape2', name:'Tattered Cape', type:'cape', value:'', desc:'Second cape slot' },
+  { id:'cape_1', name:'Cape 1', type:'cape', value:'', desc:'First cape slot' },
+  { id:'cape_2', name:'Cape 2', type:'cape', value:'', desc:'Second cape slot' },
+  { id:'cape_3', name:'Cape 3', type:'cape', value:'', desc:'Third cape slot' },
 ]
 function loadCosmeticsDef() {
   if (!existsSync(COSMETICS_PATH)) return [...DEFAULT_COSMETICS]
@@ -652,7 +650,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (pathname.startsWith('/media/')) {
-    const file = join(__dirname, pathname)
+    const file = join(__dirname, '.' + pathname)
     if (!existsSync(file) || !statSync(file).isFile()) { json(res, 404, { error: 'not found' }); return }
     const stat = statSync(file)
     const types = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.mp3': 'audio/mpeg' }

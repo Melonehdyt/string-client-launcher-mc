@@ -430,6 +430,15 @@ ipcMain.handle('mc:list-profiles', async () => {
   return profiles;
 });
 
+ipcMain.handle('mc:delete-profile', async (_, version) => {
+  const dir = path.join(DIRS.profiles, version || '');
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    return true;
+  }
+  return false;
+});
+
 ipcMain.handle('mc:list-libraries', async (_, version) => {
   const jars = [];
   const dirs = [
