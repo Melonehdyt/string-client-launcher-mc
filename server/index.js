@@ -12,6 +12,7 @@ const NEWS_PATH = join(__dirname, 'news.json')
 const BLOG_PATH = join(__dirname, 'blog.json')
 const BANNER_INDEX = join(__dirname, 'media', 'versions', 'index.json')
 const VERSIONS_DIR = join(__dirname, 'media', 'versions')
+const VERSIONS_PATH = join(__dirname, 'versions.json')
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'
 
 function loadDB() {
@@ -40,6 +41,34 @@ function saveBannerIndex(idx) {
   if (!existsSync(VERSIONS_DIR)) mkdirSync(VERSIONS_DIR, { recursive: true })
   writeFileSync(BANNER_INDEX, JSON.stringify(idx, null, 2), 'utf8')
 }
+
+const DEFAULT_VERSIONS = [
+  { id:'1.21.4', label:'1.21.4', sub:'The Garden Awakens', color:'#4ade80' },
+  { id:'1.21.3', label:'1.21.3', sub:'Bundles of Bravery', color:'#a78bfa' },
+  { id:'1.21.1', label:'1.21.1', sub:'Tricky Trials', color:'#60a5fa' },
+  { id:'1.21', label:'1.21', sub:'Tricky Trials', color:'#f59e0b' },
+  { id:'1.20.6', label:'1.20.6', sub:'Armored Paws', color:'#f472b6' },
+  { id:'1.20.4', label:'1.20.4', sub:'Trails & Tales', color:'#38bdf8' },
+  { id:'1.20.1', label:'1.20.1', sub:'Trails & Tales', color:'#c084fc' },
+  { id:'1.19.4', label:'1.19.4', sub:'Trails & Tales', color:'#34d399' },
+  { id:'1.19.2', label:'1.19.2', sub:'Wild Update', color:'#fb923c' },
+  { id:'1.18.2', label:'1.18.2', sub:'Caves & Cliffs', color:'#f472b6' },
+  { id:'1.17.1', label:'1.17.1', sub:'Caves & Cliffs', color:'#38bdf8' },
+  { id:'1.16.5', label:'1.16.5', sub:'Nether Update', color:'#ef4444' },
+  { id:'1.15.2', label:'1.15.2', sub:'Buzzy Bees', color:'#fbbf24' },
+  { id:'1.14.4', label:'1.14.4', sub:'Village & Pillage', color:'#f59e0b' },
+  { id:'1.13.2', label:'1.13.2', sub:'Update Aquatic', color:'#2dd4bf' },
+  { id:'1.12.2', label:'1.12.2', sub:'World of Color', color:'#c084fc' },
+  { id:'1.11.2', label:'1.11.2', sub:'Exploration Update', color:'#4ade80' },
+  { id:'1.10.2', label:'1.10.2', sub:'Frostburn Update', color:'#60a5fa' },
+  { id:'1.9.4', label:'1.9.4', sub:'Combat Update', color:'#f472b6' },
+  { id:'1.8.9', label:'1.8.9', sub:'Bountiful Update', color:'#ef4444' },
+]
+function loadVersions() {
+  if (!existsSync(VERSIONS_PATH)) return [...DEFAULT_VERSIONS]
+  try { return JSON.parse(readFileSync(VERSIONS_PATH, 'utf8')) } catch { return [...DEFAULT_VERSIONS] }
+}
+function saveVersions(v) { writeFileSync(VERSIONS_PATH, JSON.stringify(v, null, 2), 'utf8') }
 
 const db = loadDB()
 const news = loadNews()
@@ -203,6 +232,9 @@ const server = createServer(async (req, res) => {
 
   if (pathname === '/api/health') return json(res, 200, { status: 'ok', players: Object.keys(db).length })
 
+  // Public: list all known versions with metadata
+  if (pathname === '/api/versions') return json(res, 200, loadVersions())
+
   // Lanyard: get presence for a specific user
   if (pathname.startsWith('/api/lanyard/')) {
     const userId = pathname.replace('/api/lanyard/', '')
@@ -322,6 +354,49 @@ const server = createServer(async (req, res) => {
       delete index[version]
       saveBannerIndex(index)
     }
+    return json(res, 200, { ok: true })
+  }
+
+  // ── Admin: Versions metadata CRUD ──
+  if (req.method === 'GET' && pathname === '/api/admin/versions') {
+    if (!requireAdmin(req, res)) return
+    return json(res, 200, loadVersions())
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/versions') {
+    if (!requireAdmin(req, res)) return
+    const data = await body(req)
+    if (!data.id) return json(res, 400, { error: 'id required' })
+    const versions = loadVersions()
+    if (versions.find(v => v.id === data.id)) return json(res, 409, { error: 'version already exists' })
+    const entry = { id: data.id, label: data.label || data.id, sub: data.sub || '', color: data.color || '#60a5fa' }
+    versions.push(entry)
+    saveVersions(versions)
+    return json(res, 200, entry)
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/admin/versions/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/versions/', '')
+    const data = await body(req)
+    const versions = loadVersions()
+    const idx = versions.findIndex(v => v.id === id)
+    if (idx === -1) return json(res, 404, { error: 'version not found' })
+    if (data.label !== undefined) versions[idx].label = data.label
+    if (data.sub !== undefined) versions[idx].sub = data.sub
+    if (data.color !== undefined) versions[idx].color = data.color
+    saveVersions(versions)
+    return json(res, 200, versions[idx])
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/admin/versions/')) {
+    if (!requireAdmin(req, res)) return
+    const id = pathname.replace('/api/admin/versions/', '')
+    let versions = loadVersions()
+    const idx = versions.findIndex(v => v.id === id)
+    if (idx === -1) return json(res, 404, { error: 'version not found' })
+    versions.splice(idx, 1)
+    saveVersions(versions)
     return json(res, 200, { ok: true })
   }
 
@@ -447,7 +522,7 @@ const server = createServer(async (req, res) => {
     const types = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.mp3': 'audio/mpeg' }
     const contentType = types[extname(file)] || 'application/octet-stream'
     const range = req.headers.range
-    if (range) {
+    if (range && stat.size > 0) {
       const [start, end] = range.replace('bytes=', '').split('-').map(Number)
       let s = !isNaN(start) && start >= 0 ? start : 0
       let e = !isNaN(end) && end >= 0 ? end : stat.size - 1

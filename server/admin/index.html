@@ -279,7 +279,11 @@ async function renderMain() {
 
 /* ── Dashboard ── */
 async function renderDashboard(el) {
-  const stats = await api('GET', '/api/admin/stats')
+  const [stats, versions] = await Promise.all([
+    api('GET', '/api/admin/stats'),
+    api('GET', '/api/admin/versions').catch(() => []),
+  ])
+  const verCount = Array.isArray(versions) ? versions.length : 0
   el.innerHTML = `
     <div class="page-title">Dashboard</div>
     <div class="stats-grid">
@@ -287,7 +291,8 @@ async function renderDashboard(el) {
       <div class="stat-card"><div class="stat-label">Online</div><div class="stat-value">${stats.online || 0}</div></div>
       <div class="stat-card"><div class="stat-label">News Posts</div><div class="stat-value">${stats.news || 0}</div></div>
       <div class="stat-card"><div class="stat-label">Blog Posts</div><div class="stat-value">${stats.blog || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Version Banners</div><div class="stat-value">${stats.banners || 0}/20</div></div>
+      <div class="stat-card"><div class="stat-label">Versions</div><div class="stat-value">${verCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Version Banners</div><div class="stat-value">${stats.banners || 0}</div></div>
     </div>
     <p style="font-size:12px;color:rgba(255,255,255,0.2)">Logged in via Discord &middot; Server: ${API}</p>
   `
@@ -311,26 +316,96 @@ async function renderVersions(el) {
   const banners = await api('GET', '/api/admin/banners')
   const bannerMap = {}
   if (Array.isArray(banners)) banners.forEach(b => { bannerMap[b.version] = b.image })
+  const versionMeta = Array.isArray(await api('GET', '/api/admin/versions').catch(() => [])) ? await api('GET', '/api/admin/versions').catch(() => []) : []
+  const metaMap = {}
+  versionMeta.forEach(v => { metaMap[v.id] = v })
+
   el.innerHTML = `
-    <div class="page-title">Version Banners</div>
-    <p style="font-size:12px;color:rgba(255,255,255,0.25);margin-bottom:20px">Upload a banner image for each Minecraft version. Recommended: 1200&times;675px PNG.</p>
+    <div class="page-title">Version Manager</div>
+    <div class="list-header"><h3>${VERSIONS.length} versions</h3><button class="btn btn-primary" onclick="showVersionForm()">+ Add Version</button></div>
     <div class="ver-grid">
       ${VERSIONS.map(v => {
+        const m = metaMap[v.id]
         const img = bannerMap[v.id] ? `${API}${bannerMap[v.id]}` : null
+        const color = m ? m.color : '#60a5fa'
         return `<div class="ver-card">
-          <div class="ver-card-preview"${img ? ` style="background-image:url('${img}')"` : ''}>${img ? '' : v.id}</div>
+          <div class="ver-card-preview"${img ? ` style="background-image:url('${img}')"` : ` style="background:linear-gradient(135deg,${color}22,${color}44)"`}>${img ? '' : v.id}</div>
           <div class="ver-card-body">
-            <h4>${v.id}</h4>
-            <p>${esc(v.name)}</p>
+            <h4 style="color:${color}">${v.id}</h4>
+            <p>${esc(m ? m.sub : v.name)}</p>
             <div class="ver-actions">
-              <label>${img ? 'Change' : 'Upload'} <input type="file" accept="image/png,image/jpeg,image/webp" onchange="uploadBanner('${v.id}', this)" /></label>
+              <button class="btn btn-sm" style="background:rgba(255,255,255,0.05)" onclick="showVersionForm('${v.id}')">Edit</button>
+              <label class="btn btn-sm" style="background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.2);cursor:pointer">${img ? 'Change' : 'Upload'} Banner <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="uploadBanner('${v.id}', this)" /></label>
               ${img ? `<button class="btn btn-danger btn-sm" onclick="deleteBanner('${v.id}')">Remove</button>` : ''}
+              <button class="btn btn-danger btn-sm" onclick="deleteVersion('${v.id}')">Delete</button>
             </div>
           </div>
         </div>`
       }).join('')}
     </div>
   `
+}
+
+function showVersionForm(editId) {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'version-modal'
+  overlay.innerHTML = `<div class="modal">
+    <h3>${editId ? 'Edit Version' : 'Add Version'}</h3>
+    ${!editId ? '<div class="form-group"><label>Version ID</label><input id="v-id" placeholder="e.g. 1.22" /></div>' : `<input type="hidden" id="v-id" value="${editId}" />`}
+    <div class="form-group"><label>Label (display name)</label><input id="v-label" placeholder="e.g. 1.22" value="${editId || ''}" /></div>
+    <div class="form-group"><label>Subtitle</label><input id="v-sub" placeholder="e.g. The Next Update" /></div>
+    <div class="form-group"><label>Accent Color</label><div style="display:flex;gap:8px;align-items:center"><input id="v-color" type="color" value="#60a5fa" style="width:50px;height:40px;padding:2px;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:6px;cursor:pointer" /><input id="v-color-text" placeholder="#60a5fa" style="flex:1" oninput="document.getElementById('v-color').value=this.value" /></div></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveVersion('${editId || ''}')">${editId ? 'Save' : 'Add'}</button>
+      <button class="btn" style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5)" onclick="closeModal('version-modal')">Cancel</button>
+    </div>
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('version-modal') })
+
+  // If editing, pre-fill from saved metadata
+  if (editId) {
+    api('GET', '/api/admin/versions').then(list => {
+      const m = (Array.isArray(list) ? list : []).find(x => x.id === editId)
+      if (!m) return
+      document.getElementById('v-label').value = m.label || m.id
+      document.getElementById('v-sub').value = m.sub || ''
+      if (m.color) {
+        document.getElementById('v-color').value = m.color
+        document.getElementById('v-color-text').value = m.color
+      }
+    })
+  }
+  // Sync color picker ↔ text input
+  setTimeout(() => {
+    const cp = document.getElementById('v-color');
+    const ct = document.getElementById('v-color-text');
+    if (cp && ct) {
+      cp.addEventListener('input', () => ct.value = cp.value)
+      ct.addEventListener('input', () => cp.value = ct.value)
+    }
+  }, 0)
+}
+
+async function saveVersion(editId) {
+  const data = {
+    id: document.getElementById('v-id') ? document.getElementById('v-id').value : editId,
+    label: document.getElementById('v-label').value,
+    sub: document.getElementById('v-sub').value,
+    color: document.getElementById('v-color').value || document.getElementById('v-color-text').value,
+  }
+  if (editId) {
+    await api('PUT', `/api/admin/versions/${editId}`, { label: data.label, sub: data.sub, color: data.color })
+  } else {
+    await api('POST', '/api/admin/versions', data)
+  }
+  closeModal('version-modal')
+  renderVersions(document.getElementById('main-content'))
+}
+
+async function deleteVersion(id) {
+  if (!confirm(`Delete version ${id}? This only removes the metadata entry, not the banner file.`)) return
+  await api('DELETE', `/api/admin/versions/${id}`)
+  renderVersions(document.getElementById('main-content'))
 }
 
 async function uploadBanner(version, input) {

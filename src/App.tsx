@@ -35,7 +35,7 @@ function fetchSessionServerCape(uuid: string, setCapeUrl: (u: string) => void) {
     })
     .catch(e => console.error('Cape fetch error:', e))
 }
-const VERSIONS = [
+const DEFAULT_VERSIONS = [
   { id: '1.21.4', label: '1.21.4', sub: 'The Garden Awakens', color: '#4ade80' },
   { id: '1.21.3', label: '1.21.3', sub: 'Bundles of Bravery', color: '#a78bfa' },
   { id: '1.21.1', label: '1.21.1', sub: 'Tricky Trials', color: '#60a5fa' },
@@ -57,6 +57,12 @@ const VERSIONS = [
   { id: '1.9.4', label: '1.9.4', sub: 'Combat Update', color: '#f472b6' },
   { id: '1.8.9', label: '1.8.9', sub: 'Bountiful Update', color: '#ef4444' },
 ]
+let VERSIONS = [...DEFAULT_VERSIONS]
+
+// Fetch version metadata from server (silent fallback to defaults)
+fetch(`${API}/api/versions`).then(r => r.json()).then(list => {
+  if (Array.isArray(list) && list.length) VERSIONS = list
+}).catch(() => {})
 const INSTANCE_COLORS = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#f472b6','#38bdf8','#ef4444','#fb923c','#a78bfa','#2dd4bf','#fbbf24','#818cf8']
 const VERSION_BANNERS_API = `${API}/api/version-banners`
 const DEFAULT_SERVERS = [
@@ -75,7 +81,7 @@ function getEmbedUrl(u: string): string | null {
       const v = p.searchParams.get('v')
       const list = p.searchParams.get('list')
       const t = p.searchParams.get('t')
-      const params = new URLSearchParams({ autoplay: '1', mute: '0', controls: '0', modestbranding: '1', rel: '0', enablejsapi: '1' })
+      const params = new URLSearchParams({ autoplay: '1', mute: '0', controls: '0', modestbranding: '1', rel: '0', enablejsapi: '1', loop: '1' })
       if (t) {
         let sec = 0; const m = t.match(/(\d+)([hms])/g)
         if (m) m.forEach(x => { const n = parseInt(x); if (x.includes('h')) sec += n*3600; else if (x.includes('m')) sec += n*60; else sec += n })
@@ -83,13 +89,16 @@ function getEmbedUrl(u: string): string | null {
         if (sec > 0) params.set('start', String(sec))
       }
       if (list) params.set('list', list)
-      if (v) return `https://www.youtube.com/embed/${v}?${params.toString()}`
+      if (v) {
+        params.set('playlist', v)
+        return `https://www.youtube.com/embed/${v}?${params.toString()}`
+      }
       if (list) return `https://www.youtube.com/embed/videoseries?${params.toString()}`
-      if (p.pathname.startsWith('/embed/')) return u.includes('?') ? u.replace('?', '?autoplay=1&mute=0&') : u + '?autoplay=1&mute=0'
+      if (p.pathname.startsWith('/embed/')) return u.includes('?') ? u.replace('?', '?autoplay=1&mute=0&loop=1&') : u + '?autoplay=1&mute=0&loop=1'
     }
     if (/vimeo/i.test(p.hostname)) {
       const id = p.pathname.split('/').filter(Boolean).pop()
-      if (id) return `https://player.vimeo.com/video/${id}?autoplay=1&muted=0`
+      if (id) return `https://player.vimeo.com/video/${id}?autoplay=1&muted=0&loop=1`
     }
     const path = p.pathname
     if (/\.(mp4|webm|mov|gif|avi|mkv|png|jpg|jpeg|webp)(\?.*)?$/i.test(path)) return null
