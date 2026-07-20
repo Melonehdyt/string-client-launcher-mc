@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.0",
+    "discord.js": "^14.16.0"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"
