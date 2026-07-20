@@ -80,8 +80,23 @@ const THEMES = [
   { id: 'mocha', label: 'Mocha', color: '#1e1e32' },
 ]
 
-function BgIframe({ src, preview }: { src: string; preview?: boolean }) {
-  return <iframe src={src} className={preview ? 'bg-preview-webview' : 'bg-layer-webview'} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" />
+function BgIframe({ src, preview, volume, playing }: { src: string; preview?: boolean; volume?: number; playing?: boolean }) {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const post = (msg: object) => { try { ref.current?.contentWindow?.postMessage(JSON.stringify(msg), '*') } catch {} }
+  const isYT = /youtube|youtu\.be/i.test(src)
+  const isVimeo = /vimeo/i.test(src)
+  useEffect(() => {
+    if (preview) return
+    if (isYT) post({ event: 'command', func: playing ? 'playVideo' : 'pauseVideo', args: [] })
+    else if (isVimeo) post({ method: playing ? 'play' : 'pause' })
+  }, [playing])
+  useEffect(() => {
+    if (preview) return
+    const v = Math.round((volume ?? 1) * 100)
+    if (isYT) post({ event: 'command', func: 'setVolume', args: [v] })
+    else if (isVimeo) post({ method: 'setVolume', value: volume ?? 1 })
+  }, [volume])
+  return <iframe ref={ref} src={src} className={preview ? 'bg-preview-webview' : 'bg-layer-webview'} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" />
 }
 
 function BgWebview({ src, preview, muted, volume, playing }: { src: string; preview?: boolean; muted?: boolean; volume?: number; playing?: boolean }) {
@@ -143,7 +158,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState('')
   const [theme, setTheme] = useState('dark')
-  const [bgUrl, setBgUrl] = useState('')
+  const [bgUrl, setBgUrl] = useState(`${API_URL}/media/launcherbackground.mp4`)
   const [friends, setFriends] = useState<any[]>([])
   const [wsConnected, setWsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
@@ -190,7 +205,7 @@ export default function App() {
       const d = JSON.parse(s)
       setUsername(d.u || ''); setPlayerId(d.id || ''); setUuid(d.uuid || '')
       setSkinUrl(d.skin || ''); setCapeUrl(d.cape || ''); setMcToken(d.token || '')
-      setTheme(d.theme || 'dark'); setBgUrl(d.bg || ''); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
+      setTheme(d.theme || 'dark'); setBgUrl(d.bg || `${API_URL}/media/launcherbackground.mp4`); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
       setJvm(d.jvm || '-XX:+UseG1GC -Xss1M'); setMcPath(d.mcPath || '')
       setInstances(d.instances || []); setServers(d.servers || DEFAULT_SERVERS)
       if (d.u) setLoggedIn(true)
@@ -389,7 +404,7 @@ export default function App() {
   if (!loggedIn) {
     return (
       <div className="root">
-        <div className="bg-layer">{!bgUrl ? <div className="bg-layer-img" /> : (() => { const e = getEmbedUrl(bgUrl); if (e) return isEmbedIframe(bgUrl) ? <BgIframe src={e} /> : <BgWebview src={e} volume={bgVolume} playing={bgPlaying} />; if (isVideo(bgUrl)) return <video ref={bgVideoRef} src={bgUrl} autoPlay loop playsInline className="bg-layer-video" />; return <div className="bg-layer-img" /> })()}<div className="bg-layer-overlay" /></div><div className="bg-noise" />
+        <div className="bg-layer">{!bgUrl ? <div className="bg-layer-img" /> : (() => { const e = getEmbedUrl(bgUrl); if (e) return isEmbedIframe(bgUrl) ? <BgIframe src={e} volume={bgVolume} playing={bgPlaying} /> : <BgWebview src={e} volume={bgVolume} playing={bgPlaying} />; if (isVideo(bgUrl)) return <video ref={bgVideoRef} src={bgUrl} autoPlay loop playsInline className="bg-layer-video" />; return <div className="bg-layer-img" /> })()}<div className="bg-layer-overlay" /></div><div className="bg-noise" />
         <div className="bg-glow bg-glow-1" /><div className="bg-glow bg-glow-2" />
         <div className="login-wrap">
           <div className="glass login-card">
@@ -411,7 +426,7 @@ export default function App() {
 
   return (
     <div className="root">
-      <div className="bg-layer">{!bgUrl ? <div className="bg-layer-img" /> : (() => { const e = getEmbedUrl(bgUrl);       if (e) return isEmbedIframe(bgUrl) ? <BgIframe src={e} /> : <BgWebview src={e} volume={bgVolume} playing={bgPlaying} />; if (isVideo(bgUrl)) return <video ref={bgVideoRef} src={bgUrl} autoPlay loop playsInline className="bg-layer-video" />; return <div className="bg-layer-img" /> })()}<div className="bg-layer-overlay" /></div><div className="bg-noise" />
+      <div className="bg-layer">{!bgUrl ? <div className="bg-layer-img" /> : (() => { const e = getEmbedUrl(bgUrl);       if (e) return isEmbedIframe(bgUrl) ? <BgIframe src={e} volume={bgVolume} playing={bgPlaying} /> : <BgWebview src={e} volume={bgVolume} playing={bgPlaying} />; if (isVideo(bgUrl)) return <video ref={bgVideoRef} src={bgUrl} autoPlay loop playsInline className="bg-layer-video" />; return <div className="bg-layer-img" /> })()}<div className="bg-layer-overlay" /></div><div className="bg-noise" />
       <div className="bg-glow bg-glow-1" /><div className="bg-glow bg-glow-2" /><div className="bg-glow bg-glow-3" />
 
       <div className="shell">
@@ -448,7 +463,7 @@ export default function App() {
               </button>
               {showVolumePopover && (
                 <div style={{ position: 'absolute', top: '100%', right: 220, zIndex: 100, minWidth: 180, padding: 12, borderRadius: 10, background: 'rgba(10,10,15,0.85)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-                  {(() => { const e = bgUrl ? getEmbedUrl(bgUrl) : null; const isNative = bgUrl && isVideo(bgUrl); const isWebview = bgUrl && e && !isEmbedIframe(bgUrl); const isEmbed = bgUrl && e && isEmbedIframe(bgUrl); const controllable = isNative || isWebview; return <>
+                  {(() => { const e = bgUrl ? getEmbedUrl(bgUrl) : null; const isNative = bgUrl && isVideo(bgUrl); const isWebview = bgUrl && e && !isEmbedIframe(bgUrl); const isEmbed = bgUrl && e && isEmbedIframe(bgUrl); const controllable = isNative || isWebview || isEmbed; return <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <button onClick={() => { if (controllable) { setBgPlaying(p => !p) } }} style={{ width: 28, height: 28, border: 'none', borderRadius: 6, background: 'rgba(255,255,255,0.06)', color: controllable ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)', cursor: controllable ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {bgPlaying
@@ -461,7 +476,7 @@ export default function App() {
                     {controllable ? (
                       <input type="range" min={0} max={1} step={0.05} value={bgVolume} onChange={e => { const v = +e.target.value; setBgVolume(v) }} style={{ width: '100%' }} />
                     ) : (
-                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: '4px 0' }}>{isEmbed ? 'YouTube/Vimeo volume controlled in-player' : 'No video background'}</div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: '4px 0' }}>No video background</div>
                     )}
                   </> })()}
                 </div>

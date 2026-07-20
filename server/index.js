@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, statSync } from 'fs'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
-import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join } from 'path'
+import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join, extname } from 'path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: join(__dirname, '.env') })
 
@@ -143,6 +143,16 @@ const server = createServer(async (req, res) => {
   }
 
   if (pathname === '/api/health') return json(res, 200, { status: 'ok', players: Object.keys(db).length })
+
+  if (pathname.startsWith('/media/')) {
+    const file = join(__dirname, pathname)
+    if (!existsSync(file) || !statSync(file).isFile()) { json(res, 404, { error: 'not found' }); return }
+    const types = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.mp3': 'audio/mpeg' }
+    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' })
+    const { createReadStream } = await import('fs')
+    createReadStream(file).pipe(res)
+    return
+  }
 
   json(res, 404, { error: 'not found' })
 })
