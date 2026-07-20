@@ -144,13 +144,54 @@ const server = createServer(async (req, res) => {
 
   if (pathname === '/api/health') return json(res, 200, { status: 'ok', players: Object.keys(db).length })
 
+  if (pathname === '/' || pathname === '/index.html') {
+    const file = join(__dirname, 'public', 'index.html')
+    if (!existsSync(file)) { json(res, 404, { error: 'not found' }); return }
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    const { createReadStream: rs } = await import('fs')
+    rs(file).pipe(res)
+    return
+  }
+
+  if (pathname.startsWith('/logo.png')) {
+    const file = join(__dirname, 'public', 'logo.png')
+    if (!existsSync(file)) { json(res, 404, { error: 'not found' }); return }
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' })
+    const { createReadStream: rs } = await import('fs')
+    rs(file).pipe(res)
+    return
+  }
+
   if (pathname.startsWith('/media/')) {
     const file = join(__dirname, pathname)
     if (!existsSync(file) || !statSync(file).isFile()) { json(res, 404, { error: 'not found' }); return }
+    const stat = statSync(file)
     const types = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.mp3': 'audio/mpeg' }
-    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' })
-    const { createReadStream } = await import('fs')
-    createReadStream(file).pipe(res)
+    const contentType = types[extname(file)] || 'application/octet-stream'
+    const range = req.headers.range
+    if (range) {
+      const [start, end] = range.replace('bytes=', '').split('-').map(Number)
+      const s = start || 0, e = end || stat.size - 1
+      const chunk = e - s + 1
+      const { createReadStream: rs } = await import('fs')
+      res.writeHead(206, {
+        'Content-Range': `bytes ${s}-${e}/${stat.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunk,
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+      })
+      rs(file, { start: s, end: e }).pipe(res)
+    } else {
+      res.writeHead(200, {
+        'Content-Length': stat.size,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+      })
+      const { createReadStream: rs } = await import('fs')
+      rs(file).pipe(res)
+    }
     return
   }
 

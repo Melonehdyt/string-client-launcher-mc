@@ -7,6 +7,7 @@ const WS = 'ws://localhost:3001'
 
 type Tab = 'home' | 'instances' | 'mods' | 'chat' | 'friends' | 'profile' | 'settings'
 
+const DEFAULT_BG = `${API}/media/launcherbackground.mp4`
 const MR_API = 'https://api.modrinth.com/v2'
 async function fetchMojangCape(uuid: string): Promise<string> {
   try {
@@ -158,7 +159,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState('')
   const [theme, setTheme] = useState('dark')
-  const [bgUrl, setBgUrl] = useState(`${API_URL}/media/launcherbackground.mp4`)
+  const [bgUrl, setBgUrl] = useState(DEFAULT_BG)
   const [friends, setFriends] = useState<any[]>([])
   const [wsConnected, setWsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
@@ -205,7 +206,8 @@ export default function App() {
       const d = JSON.parse(s)
       setUsername(d.u || ''); setPlayerId(d.id || ''); setUuid(d.uuid || '')
       setSkinUrl(d.skin || ''); setCapeUrl(d.cape || ''); setMcToken(d.token || '')
-      setTheme(d.theme || 'dark'); setBgUrl(d.bg || `${API_URL}/media/launcherbackground.mp4`); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
+      const validBg = d.bg && (d.bg.startsWith('http://') || d.bg.startsWith('https://')) ? d.bg : DEFAULT_BG
+      setTheme(d.theme || 'dark'); setBgUrl(validBg); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
       setJvm(d.jvm || '-XX:+UseG1GC -Xss1M'); setMcPath(d.mcPath || '')
       setInstances(d.instances || []); setServers(d.servers || DEFAULT_SERVERS)
       if (d.u) setLoggedIn(true)
@@ -1566,9 +1568,14 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
           {bgUrl && (
             <div className="set-row">
               <span className="set-label" />
-              <button className="promo-sub" style={{ padding: '4px 12px', fontSize: 10, background: 'rgba(255,100,100,0.15)', color: 'rgba(255,255,255,0.5)' }} onClick={() => { setBgUrl(''); setBgInputUrl('') }}>
+              <button className="promo-sub" style={{ padding: '4px 12px', fontSize: 10, background: 'rgba(255,100,100,0.15)', color: 'rgba(255,255,255,0.5)' }} onClick={() => { setBgUrl(DEFAULT_BG); setBgInputUrl('') }}>
                 Remove Background
               </button>
+              {bgUrl !== DEFAULT_BG && (
+                <button className="promo-sub" style={{ padding: '4px 12px', fontSize: 10, background: 'rgba(100,200,255,0.15)', color: 'rgba(255,255,255,0.5)' }} onClick={() => { setBgUrl(DEFAULT_BG); setBgInputUrl('') }}>
+                  Reset to Default
+                </button>
+              )}
             </div>
           )}
           <div className="bg-preview-wrap">

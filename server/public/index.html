@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>String Client</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #fff;
+      min-height: 100vh;
+      overflow: hidden;
+      background: #0a0a0f;
+    }
+    .bg {
+      position: fixed; inset: 0; z-index: 0; overflow: hidden;
+    }
+    .bg video {
+      position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px);
+      object-fit: cover;
+    }
+    .overlay {
+      position: fixed; inset: 0; z-index: 1;
+      background: rgba(10,10,15,0.55);
+      backdrop-filter: blur(2px);
+    }
+    .content {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; text-align: center; padding: 40px;
+    }
+    .logo {
+      width: 80px; height: 80px; border-radius: 20px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 24px; font-size: 36px; font-weight: 700;
+      background-image: url('/logo.png');
+      background-size: cover; background-position: center;
+    }
+    .title {
+      font-size: 42px; font-weight: 700; letter-spacing: -1px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 16px; color: rgba(255,255,255,0.5); margin-bottom: 40px;
+    }
+    .status-grid {
+      display: flex; gap: 16px; margin-bottom: 40px; flex-wrap: wrap; justify-content: center;
+    }
+    .status-card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 20px 28px; min-width: 160px;
+      backdrop-filter: blur(12px);
+    }
+    .status-card .label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,0.35); margin-bottom: 6px;
+    }
+    .status-card .value {
+      font-size: 24px; font-weight: 600;
+    }
+    .status-card .value.green { color: #4ade80; }
+    .status-card .value.blue { color: #60a5fa; }
+    .news-section { width: 100%; max-width: 600px; }
+    .news-title {
+      font-size: 14px; text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,0.35); margin-bottom: 12px; text-align: left;
+    }
+    .news-card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 16px 20px; margin-bottom: 8px;
+      backdrop-filter: blur(12px); text-align: left;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .news-card .news-text { flex: 1; }
+    .news-card .news-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .news-card .news-text p { font-size: 12px; color: rgba(255,255,255,0.4); }
+    .news-tag {
+      font-size: 10px; padding: 3px 8px; border-radius: 6px;
+      background: rgba(96,165,250,0.15); color: #60a5fa; white-space: nowrap; margin-left: 12px;
+    }
+    .empty { font-size: 13px; color: rgba(255,255,255,0.25); padding: 20px 0; }
+    .footer {
+      position: fixed; bottom: 20px; left: 0; right: 0; z-index: 2;
+      text-align: center; font-size: 11px; color: rgba(255,255,255,0.2);
+    }
+    .pulse {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #4ade80; margin-right: 6px; animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <video src="/media/launcherbackground.mp4" autoplay loop muted playsinline></video>
+  </div>
+  <div class="overlay"></div>
+  <div class="content">
+    <div class="logo"></div>
+    <h1 class="title">String Client</h1>
+    <p class="subtitle">Minecraft Launcher</p>
+    <div class="status-grid">
+      <div class="status-card">
+        <div class="label">Server</div>
+        <div class="value green" id="server-status"><span class="pulse"></span>Checking...</div>
+      </div>
+      <div class="status-card">
+        <div class="label">Players</div>
+        <div class="value blue" id="player-count">0</div>
+      </div>
+    </div>
+    <div class="news-section">
+      <div class="news-title">Latest News</div>
+      <div id="news-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+  <div class="footer">String Client &copy; 2026</div>
+  <script>
+    const API = window.location.origin;
+    async function checkHealth() {
+      try {
+        const r = await fetch(`${API}/api/health`);
+        const d = await r.json();
+        document.getElementById('server-status').innerHTML = '<span class="pulse"></span>Online';
+        document.getElementById('player-count').textContent = d.players || 0;
+      } catch {
+        document.getElementById('server-status').innerHTML = '<span style="color:#f87171">Offline</span>';
+      }
+    }
+    async function loadNews() {
+      try {
+        const r = await fetch(`${API}/api/news`);
+        const d = await r.json();
+        const el = document.getElementById('news-list');
+        if (!d.length) { el.innerHTML = '<div class="empty">No news yet</div>'; return; }
+        el.innerHTML = d.slice(0, 5).map(n => `
+          <div class="news-card">
+            <div class="news-text">
+              <h3>${n.title}</h3>
+              <p>${n.text ? n.text.slice(0, 100) : ''}</p>
+            </div>
+            <span class="news-tag">${n.tag || 'Update'}</span>
+          </div>
+        `).join('');
+      } catch {
+        document.getElementById('news-list').innerHTML = '<div class="empty">Could not load news</div>';
+      }
+    }
+    checkHealth(); loadNews();
+    setInterval(checkHealth, 10000);
+  </script>
+</body>
+</html>
