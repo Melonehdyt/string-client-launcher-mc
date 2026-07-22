@@ -287,13 +287,13 @@ export default function App() {
           else if (msg.type === 'chat:clear') setChatMsgs([])
           else if (msg.type === 'chat:delete') setChatMsgs(prev => prev.filter(m => m.id !== msg.msgId))
           else if (msg.type === 'chat:lock') setChatLocked(msg.locked)
+        } catch {}
+      }
       ws.onclose = () => setWsConnected(false)
       wsRef.current = ws
       return () => ws.close()
     } catch {}
   }, [loggedIn, username, playerId])
-
-  // Sync notification ref
   useEffect(() => { notificationsEnabledRef.current = privacy.notifications }, [privacy.notifications])
 
   // Fetch initial friends (filter out self on server side already, but double-check)
