@@ -86,6 +86,15 @@ function saveCosmeticsDef(c) { writeFileSync(COSMETICS_PATH, JSON.stringify(c, n
 const db = loadDB()
 const news = loadNews()
 const blog = loadBlog()
+const mutes = new Map() // playerId -> timeout (ms timestamp)
+const bans = new Set()   // playerId strings
+const rateLimits = new Map() // clientId -> { lastMsg, count, firstMsg, lastText, textCount }
+let slowmodeSec = 0 // 0 = disabled
+const MAX_MSG_LENGTH = 500
+const SPAM_INTERVAL = 1200 // ms between messages
+const SPAM_WINDOW = 10000  // ms window for counting
+const SPAM_MAX_MSGS = 6    // max msgs in window
+const SPAM_MUTE_MINUTES = 10
 
 const BOT_TOKEN = process.env.BOT_TOKEN || 'discord-bot-secret-2024'
 
@@ -94,8 +103,9 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || ''
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || ''
 const ADMIN_GUILD_ID = process.env.ADMIN_DISCORD_GUILD_ID || ''
 const ADMIN_ROLE_IDS = (process.env.ADMIN_DISCORD_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+const OWNER_DISCORD_ROLE_IDS = (process.env.OWNER_DISCORD_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
 const OAUTH_REDIRECT = `${process.env.API_URL || `http://localhost:${PORT}`}/api/admin/auth/callback`
-const adminTokens = new Set()
+const adminTokens = new Map()
 
 function makeToken() { return createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32) }
 
@@ -105,9 +115,10 @@ async function verifyDiscordGuild(userId) {
   })
   if (!mr.ok) return null
   const member = await mr.json()
-  if (!ADMIN_ROLE_IDS.length) return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID }
-  if (!member.roles || !member.roles.some(r => ADMIN_ROLE_IDS.includes(r))) return null
-  return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID }
+  const roles = member.roles || []
+  if (!ADMIN_ROLE_IDS.length) return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID, roles }
+  if (!roles.some(r => ADMIN_ROLE_IDS.includes(r))) return null
+  return { username: member.user?.username || 'Admin', guildId: ADMIN_GUILD_ID, roles }
 }
 
 function json(res, status, data) {
@@ -133,7 +144,7 @@ function requireAdmin(req, res) {
   if (!auth) { json(res, 401, { error: 'unauthorized' }); return false }
   const token = auth.replace('Bearer ', '')
   if (!adminTokens.has(token)) { json(res, 401, { error: 'invalid token' }); return false }
-  return true
+  return adminTokens.get(token) || {}
 }
 
 // ── HTTP Server ──
@@ -149,12 +160,12 @@ const server = createServer(async (req, res) => {
     if (!username) { json(res, 400, { error: 'username required' }); return }
     const existing = Object.values(db).find(p => p.uuid === uuid)
     if (existing) {
-      return json(res, 200, { playerId: existing.playerId, username: existing.username, friends: existing.friends || [] })
+      return json(res, 200, { playerId: existing.playerId, username: existing.username, role: existing.role || '', friends: existing.friends || [] })
     }
     const playerId = randomUUID()
-    db[playerId] = { playerId, username, uuid, friends: [], cosmetics: {}, createdAt: new Date().toISOString() }
+    db[playerId] = { playerId, username, uuid, friends: [], cosmetics: {}, role: '', createdAt: new Date().toISOString() }
     saveDB(db)
-    return json(res, 200, { playerId, username, friends: [] })
+    return json(res, 200, { playerId, username, role: '', friends: [] })
   }
 
   // Cosmetics: load (GET) and toggle (PUT) per player
@@ -188,7 +199,7 @@ const server = createServer(async (req, res) => {
     const friendList = (player.friends || []).map(fid => {
       const f = db[fid]
       if (!f) return null
-      return { id: f.playerId, name: f.username, online: wsClients.has(f.playerId), activity: wsClients.has(f.playerId) ? 'Online' : 'Offline' }
+      return { id: f.playerId, name: f.username, role: f.role || '', online: wsClients.has(f.playerId), activity: wsClients.has(f.playerId) ? 'Online' : 'Offline' }
     }).filter(Boolean)
     return json(res, 200, friendList)
   }
@@ -218,7 +229,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && pathname === '/api/players/search') {
     const q = (url.searchParams.get('q') || '').toLowerCase()
     const results = Object.values(db).filter(p => p.username.toLowerCase().includes(q)).slice(0, 10)
-    return json(res, 200, results.map(p => ({ id: p.playerId, name: p.username })))
+    return json(res, 200, results.map(p => ({ id: p.playerId, name: p.username, role: p.role || '' })))
   }
 
   // News: GET public list
@@ -328,8 +339,9 @@ const server = createServer(async (req, res) => {
     const user = await userRes.json()
     const info = await verifyDiscordGuild(user.id)
     if (!info) return json(res, 403, { error: 'not authorized — you must be in the admin Discord server' })
+    const canAssignOwner = !OWNER_DISCORD_ROLE_IDS.length || info.roles.some(r => OWNER_DISCORD_ROLE_IDS.includes(r))
     const token = makeToken()
-    adminTokens.add(token)
+    adminTokens.set(token, { type: 'discord', discordId: user.id, username: info.username || 'Admin', canAssignOwner })
     // Redirect back to admin panel with token in URL hash
     res.writeHead(302, { Location: `/admin#token=${token}` })
     res.end()
@@ -337,8 +349,10 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && pathname === '/api/admin/auth/check') {
-    if (!requireAdmin(req, res)) return
-    return json(res, 200, { ok: true })
+    const admin = requireAdmin(req, res)
+    if (!admin) return
+    const isOwner = admin.type === 'password' || admin.canAssignOwner === true
+    return json(res, 200, { ok: true, type: admin.type || 'password', discordId: admin.discordId || '', canAssignOwner: isOwner })
   }
 
   // Admin password fallback (for when Discord OAuth2 isn't configured)
@@ -348,7 +362,7 @@ const server = createServer(async (req, res) => {
     const { password } = await body(req)
     if (password !== ADMIN_PASSWORD) return json(res, 403, { error: 'wrong password' })
     const token = makeToken()
-    adminTokens.add(token)
+    adminTokens.set(token, { type: 'password', discordId: '' })
     return json(res, 200, { token })
   }
 
@@ -447,6 +461,7 @@ const server = createServer(async (req, res) => {
       uuid: p.uuid,
       createdAt: p.createdAt,
       cosmetics: p.cosmetics || {},
+      role: p.role || '',
       friendsCount: (p.friends || []).length,
       online: wsClients.has(p.playerId),
     }))
@@ -460,16 +475,41 @@ const server = createServer(async (req, res) => {
     if (!db[playerId]) return json(res, 404, { error: 'player not found' })
     const { cosmeticId, enabled } = await body(req)
     if (cosmeticId) {
-      // Toggle a single cosmetic
       if (!db[playerId].cosmetics) db[playerId].cosmetics = {}
       db[playerId].cosmetics[cosmeticId] = !!enabled
     } else {
-      // Full replace (legacy)
       const { cosmetics } = await body(req)
       db[playerId].cosmetics = cosmetics || {}
     }
     saveDB(db)
     return json(res, 200, db[playerId].cosmetics)
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/admin/players/') && pathname.endsWith('/role')) {
+    const admin = requireAdmin(req, res)
+    if (!admin) return
+    const playerId = pathname.replace('/api/admin/players/', '').replace('/role', '')
+    if (!db[playerId]) return json(res, 404, { error: 'player not found' })
+    const { role } = await body(req)
+    const validRoles = ['Owner', 'Admin', 'Developer', 'Tester', 'Partner', '']
+    if (!validRoles.includes(role)) return json(res, 400, { error: 'invalid role' })
+    // Only Owner-level admins can set the Owner role
+    if (role === 'Owner') {
+      const isOwner = admin.type === 'password' || admin.canAssignOwner === true
+      if (!isOwner) {
+        return json(res, 403, { error: 'Only designated Owners can grant the Owner role' })
+      }
+    }
+    db[playerId].role = role
+    saveDB(db)
+    return json(res, 200, { playerId, role })
+  }
+
+  // Public: get a player's role
+  if (req.method === 'GET' && pathname === '/api/player/role') {
+    const pid = url.searchParams.get('playerId')
+    if (!pid || !db[pid]) return json(res, 400, { error: 'invalid player' })
+    return json(res, 200, { role: db[pid].role || '' })
   }
 
   // ── Admin: Cosmetics Definitions CRUD ──
@@ -657,11 +697,9 @@ const server = createServer(async (req, res) => {
     const contentType = types[extname(file)] || 'application/octet-stream'
     const range = req.headers.range
     if (range && stat.size > 0) {
-      const [start, end] = range.replace('bytes=', '').split('-').map(Number)
-      let s = !isNaN(start) && start >= 0 ? start : 0
-      let e = !isNaN(end) && end >= 0 ? end : stat.size - 1
-      if (s > e) s = 0
-      if (e >= stat.size) e = stat.size - 1
+      const parts = range.replace(/bytes=/, "").split("-")
+      const s = parseInt(parts[0], 10)
+      const e = parts[1] ? parseInt(parts[1], 10) : stat.size - 1
       const chunk = e - s + 1
       const { createReadStream: rs } = await import('fs')
       res.writeHead(206, {
@@ -711,9 +749,68 @@ wss.on('connection', (ws, req) => {
 
         case 'chat':
           const client = wsClients.get(clientId)
-          if (client) {
-            broadcast({ type: 'chat', username: client.username, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+          if (!client) break
+          // Check mute
+          if (client.playerId && mutes.has(client.playerId)) {
+            const until = mutes.get(client.playerId)!
+            if (Date.now() < until) {
+              ws.send(JSON.stringify({ type: 'system', text: `You are muted for ${Math.ceil((until - Date.now()) / 60000)} more minute(s)` }))
+              break
+            }
+            mutes.delete(client.playerId)
           }
+          // Check ban
+          if (client.playerId && bans.has(client.playerId)) {
+            ws.send(JSON.stringify({ type: 'system', text: 'You are banned from global chat' }))
+            break
+          }
+          // Handle commands
+          if (msg.text.startsWith('/')) {
+            handleCommand(client, msg.text, ws)
+            break
+          }
+          // Spam / rate-limit check
+          if (!isMod(client.playerId)) {
+            const text = msg.text || ''
+            if (text.length > MAX_MSG_LENGTH) {
+              ws.send(JSON.stringify({ type: 'system', text: `Message too long (max ${MAX_MSG_LENGTH} characters)` }))
+              break
+            }
+            const now = Date.now()
+            const rl = rateLimits.get(clientId) || { lastMsg: 0, count: 0, firstMsg: now, lastText: '', textCount: 0 }
+            // Slowmode
+            if (slowmodeSec > 0 && now - rl.lastMsg < slowmodeSec * 1000) {
+              ws.send(JSON.stringify({ type: 'system', text: `Chat is in slowmode — wait ${slowmodeSec}s between messages` }))
+              break
+            }
+            // Rate limit: too many messages in window
+            if (now - rl.firstMsg > SPAM_WINDOW) {
+              rl.firstMsg = now; rl.count = 0
+            }
+            rl.count++
+            if (rl.count > SPAM_MAX_MSGS) {
+              if (client.playerId) {
+                mutes.set(client.playerId, now + SPAM_MUTE_MINUTES * 60 * 1000)
+                broadcast({ type: 'system', text: `${client.username} was auto-muted for spam (${SPAM_MUTE_MINUTES} min)` })
+              }
+              ws.send(JSON.stringify({ type: 'system', text: `Spam detected — auto-muted for ${SPAM_MUTE_MINUTES} minutes` }))
+              break
+            }
+            // Duplicate message
+            if (text.toLowerCase() === rl.lastText.toLowerCase() && text.length > 2) {
+              rl.textCount = (rl.textCount || 0) + 1
+              if (rl.textCount > 2) {
+                ws.send(JSON.stringify({ type: 'system', text: 'Stop spamming the same message' }))
+                break
+              }
+            } else {
+              rl.textCount = 0
+            }
+            rl.lastMsg = now; rl.lastText = text
+            rateLimits.set(clientId, rl)
+          }
+          const playerRole = (client.playerId && db[client.playerId]?.role) || ''
+          broadcast({ type: 'chat', username: client.username, role: playerRole, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
           break
 
         case 'private-chat':
@@ -742,6 +839,123 @@ wss.on('connection', (ws, req) => {
   })
 })
 
+function findPlayer(username) {
+  return Array.from(wsClients.values()).find(c => c.username?.toLowerCase() === username.toLowerCase())
+}
+function findPlayerId(username) {
+  const p = Object.values(db).find((p: any) => p.username?.toLowerCase() === username.toLowerCase())
+  return p ? p.playerId : null
+}
+function sendToPlayer(username, data) {
+  const target = findPlayer(username)
+  if (target) { try { target.ws.send(JSON.stringify(data)) } catch {} }
+}
+function getRole(playerId) {
+  return (playerId && db[playerId]?.role) || ''
+}
+function isMod(playerId) {
+  const r = getRole(playerId)
+  return r === 'Owner' || r === 'Admin'
+}
+
+function handleCommand(client, text, ws) {
+  const parts = text.slice(1).split(' ').filter(Boolean)
+  const cmd = parts[0]?.toLowerCase()
+  const targetName = parts[1]
+  if (!cmd) { ws.send(JSON.stringify({ type: 'system', text: 'Usage: /mute <name> [minutes], /unmute <name>, /kick <name>, /ban <name>, /unban <name>, /warn <name> [reason], /clear, /slowmode <sec>, /say <msg>, /list' })); return }
+  if (!client.playerId) { ws.send(JSON.stringify({ type: 'system', text: 'You must be logged in' })); return }
+  const isStaff = isMod(client.playerId)
+
+  // Commands that don't need a target
+  if (cmd === 'clear') {
+    if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    broadcast({ type: 'system', text: 'Chat was cleared by ' + client.username })
+    return
+  }
+  if (cmd === 'slowmode') {
+    if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    const sec = parseInt(parts[1], 10)
+    if (isNaN(sec) || sec < 0) { ws.send(JSON.stringify({ type: 'system', text: 'Usage: /slowmode <seconds>' })); return }
+    slowmodeSec = sec
+    broadcast({ type: 'system', text: `Slowmode set to ${sec > 0 ? sec + 's' : 'off'} by ${client.username}` })
+    return
+  }
+  if (cmd === 'say') {
+    if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    const announcement = parts.slice(1).join(' ')
+    if (announcement) broadcast({ type: 'system', text: '📢 ' + announcement })
+    return
+  }
+  if (cmd === 'list') {
+    if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    const online = Array.from(wsClients.values()).filter(c => c.username && c.username !== 'Guest')
+      .map(c => `${c.username}${c.playerId && db[c.playerId]?.role ? ' [' + db[c.playerId].role + ']' : ''}`)
+    ws.send(JSON.stringify({ type: 'system', text: 'Online (' + online.length + '): ' + (online.join(', ') || 'none') }))
+    return
+  }
+
+  // Commands requiring a target
+  if (!targetName) { ws.send(JSON.stringify({ type: 'system', text: 'Specify a player name' })); return }
+  if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'You do not have permission to use moderation commands' })); return }
+
+  const targetPlayerId = findPlayerId(targetName)
+  if (!targetPlayerId) { ws.send(JSON.stringify({ type: 'system', text: `Player "${targetName}" not found` })); return }
+
+  switch (cmd) {
+    case 'mute': {
+      const minutes = parseInt(parts[2], 10) || 5
+      mutes.set(targetPlayerId, Date.now() + minutes * 60 * 1000)
+      broadcast({ type: 'system', text: `${targetName} was muted for ${minutes} minute(s) by ${client.username}` })
+      sendToPlayer(targetName, { type: 'system', text: `You were muted by ${client.username} for ${minutes} minute(s)` })
+      break
+    }
+    case 'unmute': {
+      if (mutes.has(targetPlayerId)) {
+        mutes.delete(targetPlayerId)
+        broadcast({ type: 'system', text: `${targetName} was unmuted by ${client.username}` })
+        sendToPlayer(targetName, { type: 'system', text: `You were unmuted by ${client.username}` })
+      } else {
+        ws.send(JSON.stringify({ type: 'system', text: `${targetName} is not muted` }))
+      }
+      break
+    }
+    case 'warn': {
+      const reason = parts.slice(2).join(' ') || 'No reason given'
+      sendToPlayer(targetName, { type: 'system', text: `⚠️ Warning from ${client.username}: ${reason}` })
+      ws.send(JSON.stringify({ type: 'system', text: `Warned ${targetName}: ${reason}` }))
+      break
+    }
+    case 'kick': {
+      sendToPlayer(targetName, { type: 'system', text: `You were kicked by ${client.username}` })
+      const target = findPlayer(targetName)
+      if (target) {
+        broadcast({ type: 'system', text: `${targetName} was kicked by ${client.username}` })
+        setTimeout(() => target.ws.close(), 500)
+      }
+      break
+    }
+    case 'ban': {
+      bans.add(targetPlayerId)
+      sendToPlayer(targetName, { type: 'system', text: `You were banned from global chat by ${client.username}` })
+      broadcast({ type: 'system', text: `${targetName} was banned by ${client.username}` })
+      const target = findPlayer(targetName)
+      if (target) setTimeout(() => target.ws.close(), 500)
+      break
+    }
+    case 'unban': {
+      if (bans.has(targetPlayerId)) {
+        bans.delete(targetPlayerId)
+        broadcast({ type: 'system', text: `${targetName} was unbanned by ${client.username}` })
+      } else {
+        ws.send(JSON.stringify({ type: 'system', text: `${targetName} is not banned` }))
+      }
+      break
+    }
+    default:
+      ws.send(JSON.stringify({ type: 'system', text: `Unknown command: /${cmd}` }))
+  }
+}
+
 function broadcast(data) {
   const msg = JSON.stringify(data)
   wsClients.forEach(c => { try { c.ws.send(msg) } catch {} })
@@ -750,14 +964,14 @@ function broadcast(data) {
 function broadcastOnline() {
   const online = Array.from(wsClients.values())
     .filter(c => c.username && c.username !== 'Guest')
-    .map(c => ({ name: c.username, id: c.playerId }))
+    .map(c => ({ name: c.username, id: c.playerId, role: (c.playerId && db[c.playerId]?.role) || '' }))
   broadcast({ type: 'online-update', online })
 }
 
 function getOnlineFriends() {
   return Array.from(wsClients.values())
     .filter(c => c.username && c.username !== 'Guest')
-    .map(c => ({ name: c.username, id: c.playerId, activity: 'Playing String Client' }))
+    .map(c => ({ name: c.username, id: c.playerId, role: (c.playerId && db[c.playerId]?.role) || '', activity: 'Playing String Client' }))
 }
 
 server.listen(PORT, '0.0.0.0', () => {

@@ -256,16 +256,15 @@ async function render() {
       sessionStorage.setItem('admin_token', token)
       window.location.hash = ''
       history.replaceState(null, '', '/admin')
-      renderLayout()
-      renderMain()
+    } else {
+      renderLogin()
       return
     }
-    renderLogin()
-    return
   }
   // Verify token is still valid
   const r = await api('POST', '/api/admin/auth/check')
   if (!r.ok) { token = null; sessionStorage.removeItem('admin_token'); render(); return }
+  _canAssignOwner = !!r.canAssignOwner
   renderLayout()
   renderMain()
 }
@@ -447,6 +446,7 @@ async function renderPlayers(el) {
 }
 
 let _allPlayers = []
+let _canAssignOwner = false
 async function renderPlayerList() {
   const el = document.getElementById('player-list')
   if (!el) return
@@ -459,9 +459,12 @@ async function renderPlayerList() {
       ${filtered.length === 0 ? '<div class="empty-state"><p>No players found</p></div>' : ''}
       ${filtered.map(p => {
         const c = p.cosmetics || {}
+        const roleColors = { Owner:'#fbbf24', Admin:'#f87171', Developer:'#60a5fa', Tester:'#a78bfa', Partner:'#4ade80' }
+        const roleColor = roleColors[p.role] || 'transparent'
         return `<div class="card-row">
           <div style="flex:1;min-width:0">
             <strong>${esc(p.username)}</strong>
+            ${p.role ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 7px;border-radius:4px;margin-left:6px;background:${roleColor}22;color:${roleColor};border:1px solid ${roleColor}44;text-transform:uppercase;letter-spacing:0.3px;vertical-align:middle">${esc(p.role)}</span>` : ''}
             <div style="font-size:11px;color:rgba(255,255,255,0.15);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
               ID: ${p.playerId.slice(0,8)}… &middot; UUID: ${(p.uuid || '').slice(0,8)}… &middot; Joined ${new Date(p.createdAt).toLocaleDateString()}
               ${c.theme ? ' &middot; Theme: ' + c.theme : ''}
@@ -469,6 +472,14 @@ async function renderPlayerList() {
             </div>
           </div>
           <span style="font-size:10px;color:${p.online ? 'rgba(74,222,128,0.6)' : 'rgba(255,255,255,0.15)'};margin-right:8px">${p.online ? '● Online' : '○ Offline'}</span>
+          <select onchange="setPlayerRole('${p.playerId}',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 8px;font-size:11px;color:rgba(255,255,255,0.7);outline:none;cursor:pointer;margin-right:6px;-webkit-appearance:none;appearance:none">
+            <option value="">No role</option>
+            ${_canAssignOwner ? '<option value="Owner" style="color:#fbbf24;font-weight:700">Owner</option>' : (p.role === 'Owner' ? '<option value="Owner" selected style="color:#fbbf24;font-weight:700">Owner</option>' : '')}
+            ${['Admin','Developer','Tester','Partner'].map(r => {
+              const colors = { Admin:'#f87171', Developer:'#60a5fa', Tester:'#a78bfa', Partner:'#4ade80' }
+              return `<option value="${r}" ${p.role === r ? 'selected' : ''} style="color:${colors[r]}">${r}</option>`
+            }).join('')}
+          </select>
           <button class="btn btn-sm" style="background:rgba(255,255,255,0.05)" onclick="showCosmeticsForm('${p.playerId}')">Cosmetics</button>
         </div>`
       }).join('')}
@@ -529,6 +540,13 @@ async function toggleCosmetic(playerId, cosmeticId, enabled) {
 async function deleteCosmetic(id) {
   if (!confirm(`Delete cosmetic "${id}"? This will not remove it from players, just the definition.`)) return
   await api('DELETE', `/api/admin/cosmetics/${id}`)
+}
+
+async function setPlayerRole(playerId, role) {
+  const r = await api('PUT', `/api/admin/players/${playerId}/role`, { role })
+  if (r.error) { alert(r.error); return }
+  const p = _allPlayers.find(x => x.playerId === playerId)
+  if (p) p.role = role
 }
 
 /* ── Blog ── */

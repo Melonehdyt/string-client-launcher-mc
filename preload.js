@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Auth
   login: () => ipcRenderer.invoke('auth:login'),
+  refreshToken: () => ipcRenderer.invoke('auth:refresh'),
   launchMinecraft: (o) => ipcRenderer.invoke('launch-minecraft', o),
   killMinecraft: () => ipcRenderer.invoke('kill-minecraft'),
   selectMinecraftPath: () => ipcRenderer.invoke('select-minecraft-path'),

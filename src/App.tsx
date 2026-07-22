@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { SkinViewer } from 'skinview3d'
 import logo from './assets/logo.png'
 
-const API = 'http://200.141.0.156:3000'
-const WS = 'ws://200.141.0.156:3000'
+const API = 'https://stringclient.com'
+const WS = 'wss://stringclient.com'
 
 type Tab = 'home' | 'instances' | 'mods' | 'chat' | 'friends' | 'profile' | 'settings'
 
@@ -218,6 +218,7 @@ export default function App() {
   const [bgOverlayColor, setBgOverlayColor] = useState('')
   const [notifications, setNotifications] = useState<any[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
+  const [role, setRole] = useState(() => { try { const s = localStorage.getItem('sc'); if (s) { const d = JSON.parse(s); return d.role || '' } return '' } catch { return '' } })
   const [hasSubscription, setHasSubscription] = useState(() => { try { return localStorage.getItem('sc_subscribed') === 'true' } catch { return false } })
   const bgVideoRef = useRef<HTMLVideoElement>(null)
   const notificationsEnabledRef = useRef(privacy.notifications)
@@ -237,7 +238,8 @@ export default function App() {
     if (s) { try {
       const d = JSON.parse(s)
       setUsername(d.u || ''); setPlayerId(d.id || ''); setUuid(d.uuid || '')
-      setSkinUrl(d.skin || ''); setCapeUrl(d.cape || ''); setMcToken(d.token || '')
+      setSkinUrl(d.skin || ''); setCapeUrl(d.cape || ''); setMcToken(d.token || localStorage.getItem('sc_mc_token') || '')
+      setRole(d.role || '')
       const validBg = d.bg && (d.bg.startsWith('http://') || d.bg.startsWith('https://')) ? d.bg : DEFAULT_BG
       setTheme(d.theme || 'dark'); setBgUrl(validBg); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
       setJvm(d.jvm || '-XX:+UseG1GC -Xss1M'); setMcPath(d.mcPath || '')
@@ -261,7 +263,7 @@ export default function App() {
   }, [])
 
   const save = useCallback(() => {
-    localStorage.setItem('sc', JSON.stringify({ u: username, id: playerId, uuid, skin: skinUrl, cape: capeUrl, token: mcToken, theme, bg: bgUrl, overlay: bgOverlayColor, ram, jvm, mcPath, instances, servers }))
+    localStorage.setItem('sc', JSON.stringify({ u: username, id: playerId, uuid, skin: skinUrl, cape: capeUrl, token: mcToken, theme, bg: bgUrl, overlay: bgOverlayColor, ram, jvm, mcPath, instances, servers, role }))
     localStorage.setItem('sc_privacy', JSON.stringify(privacy))
   }, [username, playerId, uuid, skinUrl, capeUrl, mcToken, theme, bgUrl, bgOverlayColor, ram, jvm, mcPath, instances, servers, privacy])
 
@@ -282,7 +284,7 @@ export default function App() {
           const msg = JSON.parse(e.data)
           if (msg.type === 'chat') setChatMsgs(prev => [...prev, msg])
           else if (msg.type === 'system') setChatMsgs(prev => [...prev, { type: 'system', text: msg.text, time: '' }])
-          else if (msg.type === 'online-update') setOnlineList(Array.isArray(msg.online) ? msg.online.map((o: any) => typeof o === 'string' ? o : o.name) : [])
+          else if (msg.type === 'online-update') setOnlineList(Array.isArray(msg.online) ? msg.online : [])
           else if (msg.type === 'private-chat') setPrivateChatMsgs(prev => [...prev, { ...msg, time: msg.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
           else if (msg.type === 'notification') { if (notificationsEnabledRef.current) { setNotifications(prev => [{ id: Date.now(), ...msg, time: msg.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), read: false }, ...prev]); setNotifications(prev => { if (prev.length > 50) return prev.slice(0, 50); return prev }) } }
         } catch {}
@@ -319,6 +321,8 @@ export default function App() {
         setUsername(data.username); setPlayerId(data.playerId); setUuid(result.uuid)
         setSkinUrl(`https://mineskin.eu/skin/${result.username}`)
         setMcToken(result.accessToken || '')
+        localStorage.setItem('sc_mc_token', result.accessToken || '')
+        setRole(data.role || '')
         setLoggedIn(true)
         fetchMojangCape(result.uuid).then(url => { if (url) setCapeUrl(url) })
         // Save to accounts list
@@ -343,6 +347,7 @@ export default function App() {
     setSkinUrl(acc.skin || `https://mineskin.eu/skin/${acc.u}`); setCapeUrl('')
     setShowAccountPicker(false); setLoggedIn(true)
     fetchMojangCape(acc.uuid).then(url => { if (url) setCapeUrl(url) })
+    fetch(`${API}/api/player/role?playerId=${acc.id}`).then(r => r.json()).then(d => { if (d.role !== undefined) setRole(d.role) }).catch(() => {})
   }
 
   const sendChat = useCallback((text: string) => {
@@ -357,7 +362,7 @@ export default function App() {
     }
   }, [])
 
-  const handleLaunch = useCallback(async (version: string) => {
+  const handleLaunch = useCallback(async (version: string, instSettings?: { resolution?: string; loader?: string }) => {
     const api = (window as any).electronAPI
     if (!api?.launchMinecraft) return
     setLaunching(true)
@@ -365,6 +370,8 @@ export default function App() {
       const result = await api.launchMinecraft({
         username, version, ram: ram * 1024, javaPath: undefined,
         mcPath: mcPath || undefined,
+        resolution: instSettings?.resolution,
+        loader: instSettings?.loader,
       })
       if (result?.pid) setLaunchPid(result.pid)
     } catch (e: any) {
@@ -580,7 +587,6 @@ export default function App() {
                 launchPid={launchPid}
                 onLaunch={handleLaunch}
                 onKill={handleKill}
-                friends={friends}
                 onlineList={onlineList}
                 hasSubscription={hasSubscription}
               />
@@ -620,7 +626,7 @@ export default function App() {
                 username={username} playerId={playerId} uuid={uuid}
                 skinUrl={skinUrl} setSkinUrl={setSkinUrl}
                 capeUrl={capeUrl} setCapeUrl={setCapeUrl}
-                mcToken={mcToken}
+                mcToken={mcToken} setMcToken={setMcToken} role={role}
               />
             )}
             {tab === 'settings' && (
@@ -700,11 +706,11 @@ function SideBtn({ id, icon, tab, setTab }: { id: string; icon: string; tab: str
 }
 
 /* ── Home ── */
-function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, friends, onlineList, hasSubscription }: {
+function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, onlineList, hasSubscription }: {
   username: string; selectedVer: string; servers: { name: string; online: string }[]
   launching: boolean; launchPid: number | null
-  onLaunch: (v: string) => void; onKill: () => void
-  friends: any[]; onlineList: string[]; hasSubscription: boolean
+  onLaunch: (v: string, s?: { resolution?: string; loader?: string }) => void; onKill: () => void
+  onlineList: any[]; hasSubscription: boolean
 }) {
   const [news, setNews] = useState<any[]>([])
   const [selectedNews, setSelectedNews] = useState<any>(null)
@@ -716,8 +722,6 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
   }
 
   useEffect(() => { fetchNews()   }, [])
-
-  const onlineFriends = friends.filter(f => onlineList.includes(f.name) || onlineList.includes(f.id))
 
   return (
     <div className="home-grid">
@@ -812,15 +816,14 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
 
       <div className="home-side">
         <div className="panel">
-          <div className="panel-title">Online Friends ({onlineFriends.length})</div>
-          {onlineFriends.length === 0 ? (
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.15)', padding: '6px 0' }}>No friends online</div>
-          ) : onlineFriends.map((f: any) => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, marginBottom: 2, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
-              {f.name}
+          <div className="panel-title">Online <span style={{ color: 'rgba(255,255,255,0.3)' }}>({onlineList.length})</span></div>
+          {onlineList.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.15)', padding: '6px 0' }}>No players online</div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', padding: '6px 0' }}>
+              {onlineList.length} player{onlineList.length !== 1 ? 's' : ''} currently online
             </div>
-          ))}
+          )}
         </div>
 
         {!hasSubscription && (
@@ -842,7 +845,7 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
 function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRemove, onUpdate, onLaunch, launching, launchPid, onKill }: {
   selectedVer: string; setSelectedVer: (v: string) => void; jvm: string
   instances: any[]; onAdd: (i: any) => void; onRemove: (id: number) => void; onUpdate: (id: number, u: any) => void
-  onLaunch: (v: string) => void; launching: boolean; launchPid: number | null; onKill: () => void
+  onLaunch: (v: string, s?: { resolution?: string; loader?: string }) => void; launching: boolean; launchPid: number | null; onKill: () => void
 }) {
   const [name, setName] = useState('')
   const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0])
@@ -952,7 +955,7 @@ function InstancesTab({ selectedVer, setSelectedVer, jvm, instances, onAdd, onRe
   }
 
   const launchInstance = (inst: any) => {
-    onLaunch(inst.version)
+    onLaunch(inst.version, { resolution: inst.resolution, loader: inst.loader })
   }
 
   const getVersionInfo = (ver: string) => VERSIONS.find(v => v.id === ver) || { label: ver, sub: '', color: '#888' }
@@ -1222,6 +1225,9 @@ function ModrinthTab({ instances }: { instances: any[] }) {
   const sortRef = useRef<HTMLDivElement>(null)
   const [loader, setLoader] = useState('fabric')
   const [projectType, setProjectType] = useState('mod')
+  const [gameVer, setGameVer] = useState('1.21.4')
+  const [targetInst, setTargetInst] = useState('')
+  const GAME_VERSIONS = ['1.21.4','1.21.3','1.21.1','1.21','1.20.6','1.20.4','1.20.1','1.19.4','1.18.2','1.17.1','1.16.5','1.15.2','1.14.4','1.12.2','1.8.9']
 
   const buildFacets = () => {
     const f: string[] = [`project_type:${projectType}`]
@@ -1254,25 +1260,49 @@ function ModrinthTab({ instances }: { instances: any[] }) {
   }, [])
 
   const installMod = async (projectId: string, projectTitle: string) => {
+    const api = (window as any).electronAPI
+    if (!api?.saveFile) {
+      setInstallMsg('Install from in-app only')
+      setTimeout(() => setInstallMsg(''), 2000)
+      return
+    }
+    const inst = instances.find(i => i.id === Number(targetInst))
+    if (instances.length > 0 && !inst) {
+      setInstallMsg('Select an instance first')
+      setTimeout(() => setInstallMsg(''), 2000)
+      return
+    }
+    const targetVersion = inst ? inst.version : gameVer
+    const targetLoader = inst ? inst.loader.toLowerCase() : loader
     setInstallMsg(`Installing ${projectTitle}...`)
     try {
-      const r = await fetch(`${MR_API}/project/${projectId}/version?loaders=%5B%22${loader}%22%5D&game_versions=%5B%221.21.4%22%5D`)
+      const r = await fetch(`${MR_API}/project/${projectId}/version?loaders=%5B%22${targetLoader}%22%5D&game_versions=%5B%22${targetVersion}%22%5D`)
       const versions = await r.json()
       if (versions?.length > 0) {
         const primaryFiles = versions[0].files || []
         const jarFile = primaryFiles.find((f: any) => f.filename.endsWith('.jar'))
         if (jarFile?.url) {
-          const a = document.createElement('a')
-          a.href = jarFile.url; a.download = jarFile.filename
-          document.body.appendChild(a); a.click(); a.remove()
-          setInstallMsg(`Downloading ${jarFile.filename}...`)
-          setTimeout(() => setInstallMsg(''), 3000)
+          const fileResp = await fetch(jarFile.url)
+          const blob = await fileResp.blob()
+          const reader = new FileReader()
+          reader.onload = () => {
+            const dataUrl = reader.result as string
+            const subdir = inst ? `profiles/${inst.version}/mods` : 'mods'
+            api.saveFile({ subdir, name: jarFile.filename.replace('.jar',''), dataUrl }).then(() => {
+              setInstallMsg(`${jarFile.filename} installed${inst ? ` to ${inst.name}` : ''}`)
+              setTimeout(() => setInstallMsg(''), 3000)
+            }).catch(() => {
+              setInstallMsg('Save failed')
+              setTimeout(() => setInstallMsg(''), 2000)
+            })
+          }
+          reader.readAsDataURL(blob)
         } else {
-          setInstallMsg('No JAR available for this version')
+          setInstallMsg('No JAR available')
           setTimeout(() => setInstallMsg(''), 2000)
         }
       } else {
-        setInstallMsg('No compatible version found')
+        setInstallMsg(`No version for ${targetVersion} / ${targetLoader}`)
         setTimeout(() => setInstallMsg(''), 2000)
       }
     } catch {
@@ -1321,8 +1351,22 @@ function ModrinthTab({ instances }: { instances: any[] }) {
             </div>
           </div>
         </div>
-        <input className="modrinth-search" placeholder="Search..." value={query} onChange={e => setQuery(e.target.value)} />
+        <div className="mr-filter-row">
+          <input className="modrinth-search" placeholder="Search..." value={query} onChange={e => setQuery(e.target.value)} />
+          <select className="mr-inst-select" value={gameVer} onChange={e => setGameVer(e.target.value)} style={{ flexShrink: 0, width: 100, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 16px', color: 'rgba(255,255,255,0.75)', fontSize: 13, outline: 'none', fontFamily: 'inherit', backdropFilter: 'blur(8px)' }}>
+            {GAME_VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
       </div>
+      {instances.length > 0 && (
+        <div className="panel" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'rgba(255,255,255,0.3)' }}>Install to:</span>
+          <select value={targetInst} onChange={e => setTargetInst(e.target.value)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '4px 8px', color: 'rgba(255,255,255,0.7)', fontSize: 12, outline: 'none', fontFamily: 'inherit' }}>
+            <option value="">Download (no instance)</option>
+            {instances.map(i => <option key={i.id} value={i.id}>{i.name} ({i.version} / {i.loader})</option>)}
+          </select>
+        </div>
+      )}
       {installMsg && <div className="panel" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{installMsg}</div>}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.2)' }}>Searching...</div>
@@ -1385,7 +1429,7 @@ function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSe
           {(partner ? privMsgs : chatMsgs).map((m, i) => (
             <div key={i} className={`chat-msg ${m.type === 'system' ? 'chat-system' : ''} ${m.fromId === playerId || m.sent ? 'chat-self' : ''}`}>
               {m.time && <span className="chat-time">{m.time}</span>}
-              {m.username && !m.sent && <span className="chat-who">{m.username}</span>}
+              {m.username && !m.sent && <><span className="chat-who">{m.username}</span>{m.role ? <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>{m.role}</span> : ''}</>}
               {m.sent && <span className="chat-who" style={{ color: 'rgba(255,255,255,0.2)' }}>you</span>}
               <span className="chat-body">{m.text}</span>
             </div>
@@ -1407,12 +1451,11 @@ function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSe
         </div>
       </div>
       <div className="chat-side">
-        <div className="panel"><h4>Online ({onlineList.length})</h4>
-          {onlineList.map((o: any) => {
-            const n = typeof o === 'string' ? o : o.name
-            const id = typeof o === 'string' ? null : o.id
-            return <div key={n} className="chat-user" onClick={() => id && onSendPrivate && onSendPrivate(id, '/')} style={{ cursor: id ? 'pointer' : 'default' }}><span className="d" />{n}</div>
-          })}
+        <div className="panel">
+          <h4>Online ({onlineList.length})</h4>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', padding: '8px 0' }}>
+            {onlineList.length} player{onlineList.length !== 1 ? 's' : ''} currently connected
+          </div>
         </div>
       </div>
     </div>
@@ -1513,7 +1556,7 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
               <div key={f.id || i} className="friend-row" style={{ cursor: 'pointer', borderRadius: 8 }} onClick={() => openChat(f)}>
                 <div className="friend-av" style={{ background: 'rgba(255,255,255,0.06)' }}>{f.name[0]}</div>
                 <div className="friend-info">
-                  <div className="friend-name">{f.name}</div>
+                  <div className="friend-name">{f.name} {f.role ? <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>{f.role}</span> : ''}</div>
                   <div className="friend-act">{f.activity || 'Offline'}</div>
                 </div>
                 <div className={`friend-dot ${f.online ? 'on' : 'off'}`} />
@@ -1530,9 +1573,9 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
 }
 
 /* ── Profile ── */
-function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, setCapeUrl, mcToken }: {
+function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, setCapeUrl, mcToken, setMcToken, role }: {
   username: string; playerId: string; uuid: string; skinUrl: string; capeUrl: string
-  setSkinUrl: (u: string) => void; setCapeUrl: (u: string) => void; mcToken: string
+  setSkinUrl: (u: string) => void; setCapeUrl: (u: string) => void; mcToken: string; setMcToken: (t: string) => void; role: string
 }) {
   const skinRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<SkinViewer | null>(null)
@@ -1595,25 +1638,67 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     })
   }
 
+  const _refreshToken = useCallback(async () => {
+    const api = (window as any).electronAPI
+    // Try silent refresh first
+    if (api?.refreshToken) {
+      try {
+        const result = await api.refreshToken()
+        if (result?.accessToken) {
+          setMcToken(result.accessToken)
+          localStorage.setItem('sc_mc_token', result.accessToken)
+          return result.accessToken
+        }
+      } catch {}
+    }
+    // Fall back to full login flow (opens browser)
+    if (api?.login) {
+      try {
+        const result = await api.login()
+        if (result?.accessToken) {
+          setMcToken(result.accessToken)
+          localStorage.setItem('sc_mc_token', result.accessToken)
+          return result.accessToken
+        }
+      } catch {}
+    }
+    return null
+  }, [setMcToken])
+
+  const _mcFetch = useCallback(async (url: string, opts?: { method?: string; body?: any; json?: boolean }): Promise<Response> => {
+    let token = mcToken
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+    if (opts?.json) headers['Content-Type'] = 'application/json'
+    let res = await fetch(url, { method: opts?.method || 'GET', headers, body: opts?.body })
+    if (res.status === 401) {
+      const newToken = await _refreshToken()
+      if (newToken) {
+        token = newToken
+        headers.Authorization = `Bearer ${token}`
+        res = await fetch(url, { method: opts?.method || 'GET', headers, body: opts?.body })
+      }
+    }
+    return res
+  }, [mcToken, _refreshToken])
+
   useEffect(() => {
     let found = false
+    let cancelled = false
     // Path 1: Minecraft API (requires mcToken)
     if (mcToken) {
-      fetch('https://api.minecraftservices.com/minecraft/profile', {
-        headers: { Authorization: `Bearer ${mcToken}` }
-      }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+      _mcFetch('https://api.minecraftservices.com/minecraft/profile').then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(d => {
+          if (cancelled) return
           if (d?.capes?.length) {
             setOwnedCapes(d.capes)
             const active = d.capes.find((c: any) => c.state === 'ACTIVE')
             if (active?.url) { found = true; setCapeUrl(active.url.replace(/^http:/, 'https:')) }
             return
           }
-          return fetch('https://api.minecraftservices.com/minecraft/profile/capes', {
-            headers: { Authorization: `Bearer ${mcToken}` }
-          }).then(r => r.ok ? r.json() : null)
+          return _mcFetch('https://api.minecraftservices.com/minecraft/profile/capes').then(r => r.ok ? r.json() : null)
         })
         .then(capesData => {
+          if (cancelled) return
           if (capesData?.length) {
             setOwnedCapes(capesData)
             const active = capesData.find((c: any) => c.state === 'ACTIVE')
@@ -1622,13 +1707,14 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
         })
         .catch(() => {})
         .finally(() => {
-          if (!found && uuid) fetchSessionServerCape(uuid, setCapeUrl)
+          if (!found && uuid && !cancelled) fetchSessionServerCape(uuid, setCapeUrl)
         })
     } else if (uuid) {
       // Path 2: no token available, try session server directly
       fetchSessionServerCape(uuid, setCapeUrl)
     }
-  }, [mcToken, uuid])
+    return () => { cancelled = true }
+  }, [mcToken, uuid, _mcFetch])
 
   useEffect(() => {
     if (!skinRef.current) return
@@ -1661,7 +1747,15 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     if (!v) return
     if (capeUrl) {
       const url = capeUrl.replace(/^http:/, 'https:')
-      try { v.loadCape(url, { backEquipment: showElytra ? 'elytra' : 'cape' }) } catch (e) { console.error('Cape load error:', e) }
+      fetch(url).then(r => r.blob()).then(blob => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          try { v.loadCape(reader.result as string, { backEquipment: showElytra ? 'elytra' : 'cape' }) } catch (e) { console.error('Cape load error:', e) }
+        }
+        reader.readAsDataURL(blob)
+      }).catch(() => {
+        try { v.loadCape(url, { backEquipment: showElytra ? 'elytra' : 'cape' }) } catch (e) { console.error('Cape fallback error:', e) }
+      })
     } else {
       v.resetCape()
     }
@@ -1688,9 +1782,8 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     if (!previewSkinUrl || !mcToken) return
     setSkinUploading(true)
     setSkinStatus('Applying...')
-    fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${mcToken}`, 'Content-Type': 'application/json' },
+    _mcFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+      method: 'POST', json: true,
       body: JSON.stringify({ variant: skinVariant, url: previewSkinUrl }),
     }).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -1714,9 +1807,8 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     const fd = new FormData()
     fd.append('variant', skinVariant)
     fd.append('file', file)
-    fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+    _mcFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${mcToken}` },
       body: fd,
     }).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -1735,9 +1827,8 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     const capeInfo = ownedCapes.find((c: any) => c.id === capeId)
     if (capeInfo?.url && mcToken) {
       setCapeUrl(capeInfo.url)
-      fetch('https://api.minecraftservices.com/minecraft/profile/capes/active', {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${mcToken}`, 'Content-Type': 'application/json' },
+      _mcFetch('https://api.minecraftservices.com/minecraft/profile/capes/active', {
+        method: 'PUT', json: true,
         body: JSON.stringify({ capeId })
       }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
         .then(p => {
@@ -1755,6 +1846,7 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
           <div className="panel profile-stat" style={{ marginBottom: 10, textAlign: 'center' }}>
             <h4>Username</h4>
             <p style={{ fontSize: 16 }}>{username}</p>
+            {role && <span className="role-badge">{role}</span>}
           </div>
           <div className="skin-box" ref={skinRef} />
           <div className="skin-controls">

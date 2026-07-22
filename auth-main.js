@@ -8,6 +8,8 @@
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { URL } = require('url');
 const { app, BrowserWindow, session: electronSession } = require('electron');
 const jose = require('jose');
@@ -228,7 +230,7 @@ async function loginWithMicrosoft() {
   const authCode = new URL(url).searchParams.get('code');
   if (!authCode) throw new Error('No auth code in response');
 
-  const { accessToken: msAccessToken } = await getMsAccessToken(authCode, codeVerifier);
+  const { accessToken: msAccessToken, refreshToken } = await getMsAccessToken(authCode, codeVerifier);
   const { titleToken, userToken } = await doSisuAuthorize(msAccessToken, deviceToken, jwk, keyPair, cv, sessionId, issueInstant);
   const { userHash, xblXsts } = await getXSTS(deviceToken, titleToken.token, userToken.token, jwk, keyPair, cv, issueInstant);
   const { accessToken: mcToken } = await mcLogin(userHash, xblXsts);
@@ -237,7 +239,67 @@ async function loginWithMicrosoft() {
   if (!owns) throw new Error('Account does not own Minecraft: Java Edition');
 
   const profile = await getProfile(mcToken);
-  return { ...profile, accessToken: mcToken };
+  // Persist session for silent refresh
+  const sessionDir = path.join(app.getPath('userData'), 'sessions');
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(path.join(sessionDir, 'last.json'), JSON.stringify({
+    refreshToken, deviceToken, jwk, keyPair: { privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }) },
+    cv, issueInstant, sessionId,
+  }));
+  return { ...profile, accessToken: mcToken, refreshToken };
 }
 
-module.exports = { loginWithMicrosoft };
+// --- Silent token refresh ---
+let _refreshSession = null;
+
+function loadRefreshSession() {
+  try {
+    const sessionPath = path.join(app.getPath('userData'), 'sessions', 'last.json');
+    if (fs.existsSync(sessionPath)) {
+      const d = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      _refreshSession = {
+        ...d,
+        keyPair: { privateKey: crypto.createPrivateKey(d.keyPair.privateKey) },
+      };
+    }
+  } catch {}
+}
+loadRefreshSession();
+
+async function refreshMinecraftToken() {
+  if (!_refreshSession) throw new Error('No refresh session available');
+  const { refreshToken, deviceToken, jwk, keyPair, cv, issueInstant, sessionId } = _refreshSession;
+
+  // 1. Use Microsoft refresh token to get new MS access token (silent, no browser)
+  const params = new URLSearchParams();
+  params.append('client_id', CLIENT_ID);
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', refreshToken);
+  params.append('redirect_uri', MS_REDIRECT_URL);
+  params.append('scope', XBL_SCOPE);
+  const tokenRes = await httpRequest(MS_AUTH_TOKEN_URL, 'POST', params.toString(), { 'Content-Type': 'application/x-www-form-urlencoded' });
+  if (tokenRes.status !== 200) throw new Error('Refresh token exchange failed');
+  const newRefreshToken = tokenRes.data.refresh_token;
+  const newMsAccessToken = tokenRes.data.access_token;
+
+  // 2. SISU Authorize with new MS token
+  const { titleToken, userToken } = await doSisuAuthorize(newMsAccessToken, deviceToken, jwk, keyPair, cv, sessionId, issueInstant);
+
+  // 3. XSTS
+  const { userHash, xblXsts } = await getXSTS(deviceToken, titleToken.token, userToken.token, jwk, keyPair, cv, issueInstant);
+
+  // 4. Minecraft login
+  const { accessToken: mcToken } = await mcLogin(userHash, xblXsts);
+
+  // Update stored refresh session
+  _refreshSession.refreshToken = newRefreshToken;
+  const sessionDir = path.join(app.getPath('userData'), 'sessions');
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+  const existing = JSON.parse(fs.readFileSync(path.join(sessionDir, 'last.json'), 'utf8'));
+  existing.refreshToken = newRefreshToken;
+  fs.writeFileSync(path.join(sessionDir, 'last.json'), JSON.stringify(existing));
+
+  return { accessToken: mcToken };
+}
+
+module.exports = { loginWithMicrosoft, refreshMinecraftToken };

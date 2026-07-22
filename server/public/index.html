@@ -15,11 +15,13 @@
     }
     .bg {
       position: fixed; inset: 0; z-index: 0; overflow: hidden;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0a0a0f 100%);
     }
     .bg video {
       position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px);
       object-fit: cover;
     }
+    .bg.video-failed video { display: none; }
     .overlay {
       position: fixed; inset: 0; z-index: 1;
       background: rgba(10,10,15,0.55);
@@ -122,6 +124,21 @@
   <div class="footer">String Client &copy; 2026</div>
   <script>
     const API = window.location.origin;
+
+    // Video error handling
+    const bgVideo = document.querySelector('.bg video');
+    if (bgVideo) {
+      bgVideo.addEventListener('error', () => {
+        document.querySelector('.bg')?.classList.add('video-failed')
+      });
+      // Timeout fallback if video never loads
+      setTimeout(() => {
+        if (bgVideo.readyState < 2) {
+          document.querySelector('.bg')?.classList.add('video-failed')
+        }
+      }, 10000);
+    }
+
     async function checkHealth() {
       try {
         const r = await fetch(`${API}/api/health`);

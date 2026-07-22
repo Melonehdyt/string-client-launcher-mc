@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
-const { loginWithMicrosoft } = require('./auth-main');
+const { loginWithMicrosoft, refreshMinecraftToken } = require('./auth-main');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -186,7 +186,7 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, cb) => {
     const headers = { ...details.responseHeaders }
     if (details.resourceType === 'mainFrame') {
-      headers['Content-Security-Policy'] = ["default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: http: https: file:; media-src 'self' blob: http: https: file:; frame-src *; connect-src 'self' ws://localhost:3001 http://localhost:3001 ws://200.141.0.156:3000 http://200.141.0.156:3000 https://api.modrinth.com https://api.mineatar.io https://api.minecraftservices.com https://sessionserver.mojang.com https://mineskin.eu https://api.mojang.com https://*.textures.minecraft.net https://pagead2.googlesyndication.com; script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com;"]
+      headers['Content-Security-Policy'] = ["default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: http: https: file:; media-src 'self' blob: http: https: file:; frame-src *; connect-src 'self' ws://localhost:3001 http://localhost:3001 ws://200.141.0.156:3000 http://200.141.0.156:3000 https://api.modrinth.com https://api.mineatar.io https://api.minecraftservices.com https://sessionserver.mojang.com https://mineskin.eu https://api.mojang.com https://*.textures.minecraft.net https://pagead2.googlesyndication.com https://stringclient.com wss://stringclient.com; script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com;"]
     }
     delete headers['Permissions-Policy']
     cb({ responseHeaders: headers })
@@ -289,6 +289,15 @@ ipcMain.handle('auth:login', async () => {
   try {
     const profile = await loginWithMicrosoft();
     return { username: profile.username, uuid: profile.uuid, accessToken: profile.accessToken };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('auth:refresh', async () => {
+  try {
+    const result = await refreshMinecraftToken();
+    return { accessToken: result.accessToken };
   } catch (e) {
     return { error: e.message };
   }
