@@ -30,18 +30,25 @@
       "signAndEditExecutable": false
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "buildResources/icon.ico",
-      "uninstallerIcon": "buildResources/icon.ico",
-      "installerHeaderIcon": "buildResources/icon.ico",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "String Client",
-      "unicode": true
-    }
+        "oneClick": false,
+        "perMachine": false,
+        "allowToChangeInstallationDirectory": true,
+        "installerIcon": "buildResources/icon.ico",
+        "uninstallerIcon": "buildResources/icon.ico",
+        "installerHeaderIcon": "buildResources/icon.ico",
+        "installerSidebar": "buildResources/installerSidebar.bmp",
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "shortcutName": "String Client",
+        "unicode": true,
+        "installerLanguages": ["en_US"],
+        "language": "1049",
+        "include": "buildResources/installer.nsh",
+        "runAfterFinish": false
+      }
   },
   "dependencies": {
+    "discord-rpc": "^4.0.1",
     "discord.js": "^14.27.0",
     "dotenv": "^16.4.0",
     "jose": "^4.15.5",

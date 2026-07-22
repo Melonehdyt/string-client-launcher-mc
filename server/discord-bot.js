@@ -41,16 +41,18 @@ client.once('ready', async () => {
     console.log('[Discord Bot] Slash commands registered')
   } catch (e) { console.error('Failed to register commands:', e) }
 
-  // Lanyard: fetch initial presences for all guild members
-  console.log('[Lanyard] Fetching initial presences for all guild members...')
+  // Lanyard: fetch initial presences only for the configured admin guild
+  console.log('[Lanyard] Fetching initial presences...')
   const data = loadPresence()
   let total = 0
+  const guildId = process.env.ADMIN_DISCORD_GUILD_ID || process.env.LANYARD_GUILD_ID
   for (const guild of client.guilds.cache.values()) {
+    if (guildId && guild.id !== guildId) continue
     try {
       await guild.members.fetch()
       for (const [, member] of guild.members.cache) {
         if (member.presence) {
-          data[member.id] = formatPresence(member.presence)
+          data[member.id] = formatPresence(member.presence, member.user)
           total++
         }
       }
@@ -193,11 +195,19 @@ function loadPresence() {
 }
 function savePresence(p) { writeFileSync(PRESENCE_PATH, JSON.stringify(p, null, 2), 'utf8') }
 
-function formatPresence(presence) {
+function formatPresence(presence, user) {
   if (!presence) return null
-  const activity = presence.activities?.[0] || null
+  const spotifyActivity = presence.activities?.find(a => a.name === 'Spotify' && a.type === 2)
   return {
-    userId: presence.userId,
+    discord_user: user ? {
+      id: user.id,
+      username: user.username,
+      global_name: user.globalName || null,
+      discriminator: user.discriminator || '0',
+      avatar: user.avatar,
+      public_flags: user.publicFlags ?? 0,
+      bot: user.bot ?? false,
+    } : null,
     discord_status: presence.status || 'offline',
     activities: (presence.activities || []).map(a => ({
       id: a.id,
@@ -207,26 +217,40 @@ function formatPresence(presence) {
       details: a.details || null,
       timestamps: a.timestamps || null,
       assets: a.assets ? {
-        large_image: a.assets.largeImageURL?.() || null,
+        large_image: a.assets.largeImageURL?.() || `mp:${a.assets.largeImage}` || null,
         large_text: a.assets.largeText || null,
-        small_image: a.assets.smallImageURL?.() || null,
+        small_image: a.assets.smallImageURL?.() || `mp:${a.assets.smallImage}` || null,
         small_text: a.assets.smallText || null,
       } : null,
       party: a.party || null,
       emoji: a.emoji ? { id: a.emoji.id, name: a.emoji.name, animated: a.emoji.animated } : null,
+      sync_id: a.syncId || null,
+      session_id: a.sessionId || null,
+      flags: a.flags || 0,
+      created_at: a.createdAt || null,
+      application_id: a.applicationId || null,
     })),
+    spotify: spotifyActivity ? {
+      track_id: spotifyActivity.syncId || null,
+      timestamps: spotifyActivity.timestamps || null,
+      song: spotifyActivity.details || null,
+      artist: spotifyActivity.state || null,
+      album_art_url: spotifyActivity.assets?.largeImageURL?.() || null,
+      album: spotifyActivity.assets?.largeText || null,
+    } : null,
+    listening_to_spotify: !!spotifyActivity,
+    kv: {},
     active_on_discord_web: presence.clientStatus?.web === 'online',
     active_on_discord_desktop: presence.clientStatus?.desktop === 'online',
     active_on_discord_mobile: presence.clientStatus?.mobile === 'online',
-    kv: {},
-    listening_to_spotify: null,
   }
 }
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
   if (!newPresence) return
   const data = loadPresence()
-  data[newPresence.userId] = formatPresence(newPresence)
+  const user = newPresence.member?.user || newPresence.user || null
+  data[newPresence.userId] = formatPresence(newPresence, user)
   savePresence(data)
 })
 

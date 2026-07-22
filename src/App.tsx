@@ -207,7 +207,7 @@ export default function App() {
   const [accounts, setAccounts] = useState<any[]>([])
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [privacy, setPrivacy] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('sc_privacy') || '{"online":true,"friendRequests":true,"activity":true,"notifications":true}') } catch { return { online: true, friendRequests: true, activity: true, notifications: true } }
+    try { return JSON.parse(localStorage.getItem('sc_privacy') || '{"online":true,"friendRequests":true,"activity":true,"notifications":true,"discordPresence":true}') } catch { return { online: true, friendRequests: true, activity: true, notifications: true, discordPresence: true } }
   })
   const [bgVolume, setBgVolume] = useState(1)
   const [bgPlaying, setBgPlaying] = useState(true)
@@ -308,6 +308,52 @@ export default function App() {
       if (Array.isArray(list) && list.length) setServers(list)
     }).catch(() => {})
   }, [])
+
+  // Discord Rich Presence
+  const updateDiscordPresence = useCallback((details: string, state?: string, startTimestamp?: number) => {
+    const api = (window as any).electronAPI
+    if (!api?.discordUpdate || !privacy.discordPresence) return
+    api.discordUpdate({
+      details,
+      state: state || '',
+      startTimestamp: startTimestamp || Date.now(),
+      largeImageKey: 'stringclient',
+      largeImageText: 'String Client',
+      instance: false,
+    })
+  }, [privacy.discordPresence])
+
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api) return
+    if (privacy.discordPresence) {
+      const tabLabels: Record<string, string> = { home: 'On Home', instances: 'Managing Instances', modrinth: 'Browsing Mods', friends: 'Managing Friends', chat: 'Chatting', settings: 'In Settings', skin: 'Customizing Skin', cape: 'Customizing Cape' }
+      let details = tabLabels[tab] || 'Browsing'
+      let state = ''
+      if (launching) { details = 'Playing Minecraft'; state = 'In Game' }
+      else if (privateChatPartner) { state = details; details = `Chatting with ${privateChatPartner}` }
+      api.discordStart({
+        details,
+        state,
+        startTimestamp: Date.now(),
+        largeImageKey: 'stringclient',
+        largeImageText: 'String Client',
+        instance: false,
+      })
+    } else {
+      api.discordStop()
+    }
+  }, [privacy.discordPresence])
+
+  // Update RPC on tab/launch changes (after start)
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api?.discordUpdate || !privacy.discordPresence) return
+    const tabLabels: Record<string, string> = { home: 'On Home', instances: 'Managing Instances', modrinth: 'Browsing Mods', friends: 'Managing Friends', chat: 'Chatting', settings: 'In Settings', skin: 'Customizing Skin', cape: 'Customizing Cape' }
+    if (launching) updateDiscordPresence('Playing Minecraft', 'In Game')
+    else if (privateChatPartner) updateDiscordPresence(`Chatting with ${privateChatPartner}`, tabLabels[tab] || 'Browsing')
+    else updateDiscordPresence(tabLabels[tab] || 'Browsing')
+  }, [tab, launching, privateChatPartner])
 
   // Login
   const handleMsLogin = async () => {
@@ -602,6 +648,8 @@ export default function App() {
                 friends={friends}
                 onlineList={onlineList}
                 hasSubscription={hasSubscription}
+                onStartPrivateChat={setPrivateChatPartner}
+                setActiveTab={setTab}
               />
             )}
             {tab === 'instances' && (
@@ -722,11 +770,12 @@ function SideBtn({ id, icon, tab, setTab }: { id: string; icon: string; tab: str
 }
 
 /* ── Home ── */
-function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, onlineList, friends, hasSubscription }: {
+function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, onlineList, friends, hasSubscription, onStartPrivateChat, setActiveTab }: {
   username: string; selectedVer: string; servers: { name: string; online: string }[]
   launching: boolean; launchPid: number | null
   onLaunch: (v: string, s?: { resolution?: string; loader?: string }) => void; onKill: () => void
   onlineList: any[]; friends: any[]; hasSubscription: boolean
+  onStartPrivateChat: (id: string) => void; setActiveTab: (t: any) => void
 }) {
   const [news, setNews] = useState<any[]>([])
   const [selectedNews, setSelectedNews] = useState<any>(null)
@@ -840,10 +889,14 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
           ) : friends.map((f: any) => {
             const roleC = ({Owner:'#fbbf24',Admin:'#f87171',Developer:'#60a5fa',Tester:'#a78bfa',Partner:'#4ade80'} as any)[f.role] || ''
             return (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, marginBottom: 2, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'rgba(74,222,128,0.7)' : 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 6, marginBottom: 2, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+              <img src={`https://mineskin.eu/helm/${f.uuid}/8.png`} style={{ width: 18, height: 18, borderRadius: 4, imageRendering: 'pixelated', flexShrink: 0 }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'rgba(74,222,128,0.7)' : 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
               <span style={{ flex: 1 }}>{f.name}</span>
-              {f.role && <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, color: roleC, background: roleC + '22', border: '1px solid ' + roleC + '44' }}>{f.role}</span>}
+              {f.role && <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 4px', borderRadius: 3, color: roleC, background: roleC + '22', border: '1px solid ' + roleC + '44' }}>{f.role}</span>}
+              <button className="topbar-icon" style={{ width: 20, height: 20, opacity: 0.35 }} onClick={() => { onStartPrivateChat(f.id); setActiveTab('chat') }} title="Private chat">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </button>
             </div>
             )
           })}
@@ -1503,6 +1556,22 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [friendError, setFriendError] = useState('')
   const [addingFriend, setAddingFriend] = useState('')
+  const [pendingRequests, setPendingRequests] = useState<any[]>([])
+  const [sentRequests, setSentRequests] = useState<any[]>([])
+
+  const loadRequests = async () => {
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch(`${API}/api/friends/requests?playerId=${playerId}`),
+        fetch(`${API}/api/friends/sent?playerId=${playerId}`),
+      ])
+      const d1 = await r1.json(); const d2 = await r2.json()
+      if (Array.isArray(d1)) setPendingRequests(d1)
+      if (Array.isArray(d2)) setSentRequests(d2)
+    } catch {}
+  }
+
+  useEffect(() => { loadRequests() }, [playerId])
 
   const searchPlayers = async (q: string) => {
     setSearchQ(q)
@@ -1517,19 +1586,42 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
     } catch { setSearchResults([]); setFriendError('Failed to search') }
   }
 
-  const addFriend = async (friendId: string) => {
+  const sendRequest = async (friendId: string) => {
     setAddingFriend(friendId)
     setFriendError('')
     try {
       const r = await fetch(`${API}/api/friends/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
       const d = await r.json()
-      if (!r.ok || d.error) { setFriendError(d.error || 'Failed to add'); setAddingFriend(''); return }
+      if (!r.ok || d.error) { setFriendError(d.error || 'Failed to send request'); setAddingFriend(''); return }
+      await loadRequests()
+      setSearchResults([]); setSearchQ('')
+    } catch { setFriendError('Network error — is the server online?') }
+    setAddingFriend('')
+  }
+
+  const cancelRequest = async (friendId: string) => {
+    try {
+      await fetch(`${API}/api/friends/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
+      await loadRequests()
+    } catch {}
+  }
+
+  const acceptRequest = async (friendId: string) => {
+    try {
+      const r = await fetch(`${API}/api/friends/accept`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
+      if (!r.ok) return
+      await loadRequests()
       const r2 = await fetch(`${API}/api/friends?playerId=${playerId}`)
       const d2 = await r2.json()
       if (Array.isArray(d2)) setFriends(d2)
-      setSearchQ(''); setSearchResults([])
-    } catch { setFriendError('Network error — is the server online?') }
-    setAddingFriend('')
+    } catch {}
+  }
+
+  const rejectRequest = async (friendId: string) => {
+    try {
+      await fetch(`${API}/api/friends/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId, friendId }) })
+      await loadRequests()
+    } catch {}
   }
 
   const removeFriend = async (friendId: string) => {
@@ -1546,9 +1638,56 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
     onSwitchTab('chat')
   }
 
+  const isSent = (id: string) => sentRequests.some(s => s.id === id)
+
   return (
     <div className="tab-wrap" style={{ maxWidth: 500 }}>
       <h2 className="tab-title">Friends ({friends.length})</h2>
+
+      {/* Incoming requests */}
+      {pendingRequests.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14 }}>
+          <div className="panel-title" style={{ color: 'rgba(255,200,100,0.8)' }}>Incoming Requests ({pendingRequests.length})</div>
+          <div className="friend-strip">
+            {pendingRequests.map(p => (
+              <div key={p.id} className="friend-row">
+                <img src={`https://mineskin.eu/helm/${p.uuid}/8.png`} className="friend-av" style={{ width: 28, height: 28, borderRadius: '50%', imageRendering: 'pixelated' }} />
+                <div className="friend-info">
+                  <div className="friend-name">{p.name}</div>
+                  <div className="friend-act" style={{ color: 'rgba(255,255,255,0.25)' }}>Wants to be your friend</div>
+                </div>
+                <button className="promo-sub" style={{ padding: '4px 8px', fontSize: 10 }} onClick={() => acceptRequest(p.id)}>Accept</button>
+                <button className="topbar-icon" style={{ width: 26, height: 26, opacity: 0.4, marginLeft: 4 }} onClick={() => rejectRequest(p.id)} title="Reject">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Outgoing requests */}
+      {sentRequests.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14 }}>
+          <div className="panel-title" style={{ color: 'rgba(150,200,255,0.6)' }}>Sent Requests ({sentRequests.length})</div>
+          <div className="friend-strip">
+            {sentRequests.map(p => (
+              <div key={p.id} className="friend-row">
+                <img src={`https://mineskin.eu/helm/${p.uuid}/8.png`} className="friend-av" style={{ width: 28, height: 28, borderRadius: '50%', imageRendering: 'pixelated' }} />
+                <div className="friend-info">
+                  <div className="friend-name">{p.name}</div>
+                  <div className="friend-act" style={{ color: 'rgba(255,255,255,0.2)' }}>Awaiting response</div>
+                </div>
+                <button className="topbar-icon" style={{ width: 26, height: 26, opacity: 0.4 }} onClick={() => cancelRequest(p.id)} title="Cancel">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add Friend */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="panel-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>Add Friend</span>
@@ -1564,20 +1703,22 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
         {searchResults.length > 0 && (
           <div style={{ marginTop: 8 }}>
             {searchResults.map(p => (
-              <div key={p.id} className="friend-row" style={{ cursor: 'pointer', borderRadius: 8, marginBottom: 2 }} onClick={() => addFriend(p.id)}>
-                <div className="friend-av" style={{ background: 'rgba(255,255,255,0.08)' }}>{p.name[0]}</div>
+              <div key={p.id} className="friend-row" style={{ cursor: 'pointer', borderRadius: 8, marginBottom: 2 }} onClick={() => !isSent(p.id) && sendRequest(p.id)}>
+                <img src={`https://mineskin.eu/helm/${p.uuid}/8.png`} className="friend-av" style={{ width: 28, height: 28, borderRadius: '50%' }} />
                 <div className="friend-info">
                   <div className="friend-name">{p.name}</div>
-                  <div className="friend-act" style={{ color: 'rgba(255,255,255,0.25)' }}>Click to send request</div>
+                  <div className="friend-act" style={{ color: isSent(p.id) ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.25)' }}>{isSent(p.id) ? 'Request sent' : 'Click to send request'}</div>
                 </div>
-                <button className="promo-sub" style={{ padding: '4px 10px', fontSize: 10 }} disabled={addingFriend === p.id} onClick={e => { e.stopPropagation(); addFriend(p.id) }}>
-                  {addingFriend === p.id ? '...' : '+ Add'}
+                <button className="promo-sub" style={{ padding: '4px 10px', fontSize: 10 }} disabled={addingFriend === p.id || isSent(p.id)} onClick={e => { e.stopPropagation(); sendRequest(p.id) }}>
+                  {addingFriend === p.id ? '...' : isSent(p.id) ? 'Sent' : '+ Add'}
                 </button>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Accepted friends */}
       <div className="panel">
         <div className="panel-title">Your Friends</div>
         {friends.length === 0 ? (
@@ -1586,7 +1727,7 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
           <div className="friend-strip">
             {friends.map((f, i) => (
               <div key={f.id || i} className="friend-row" style={{ cursor: 'pointer', borderRadius: 8 }} onClick={() => openChat(f)}>
-                <div className="friend-av" style={{ background: 'rgba(255,255,255,0.06)' }}>{f.name[0]}</div>
+                <img src={`https://mineskin.eu/helm/${f.uuid}/8.png`} className="friend-av" style={{ width: 28, height: 28, borderRadius: '50%', imageRendering: 'pixelated' }} />
                 <div className="friend-info">
                   <div className="friend-name">{f.name} {f.role ? <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>{f.role}</span> : ''}</div>
                   <div className="friend-act">{f.activity || 'Offline'}</div>
@@ -1975,7 +2116,7 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
   ram: number; setRam: (n: number) => void; jvm: string; setJvm: (s: string) => void
   mcPath: string; setMcPath: (p: string) => void
   servers: { name: string; online: string }[]; setServers: (s: any) => void
-  privacy: { online: boolean; friendRequests: boolean; activity: boolean; notifications: boolean }; setPrivacy: (p: any) => void
+  privacy: { online: boolean; friendRequests: boolean; activity: boolean; notifications: boolean; discordPresence: boolean }; setPrivacy: (p: any) => void
   hasSubscription: boolean; setHasSubscription: (v: boolean) => void
   onLogout: () => void
 }) {
@@ -2143,6 +2284,12 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
           <div className="set-row">
             <span className="set-label">Notifications</span>
             <button className={`tog ${privacy.notifications ? 'on' : 'off'}`} onClick={() => setPrivacy({ ...privacy, notifications: !privacy.notifications })}>
+              <span className="tog-knob" />
+            </button>
+          </div>
+          <div className="set-row">
+            <span className="set-label">Discord Presence</span>
+            <button className={`tog ${privacy.discordPresence ? 'on' : 'off'}`} onClick={() => setPrivacy({ ...privacy, discordPresence: !privacy.discordPresence })}>
               <span className="tog-knob" />
             </button>
           </div>

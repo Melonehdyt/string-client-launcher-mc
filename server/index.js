@@ -164,7 +164,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { playerId: existing.playerId, username: existing.username, role: existing.role || '', friends: existing.friends || [] })
     }
     const playerId = randomUUID()
-    db[playerId] = { playerId, username, uuid, friends: [], cosmetics: {}, role: '', createdAt: new Date().toISOString() }
+    db[playerId] = { playerId, username, uuid, friends: [], friendRequests: [], sentRequests: [], cosmetics: {}, role: '', createdAt: new Date().toISOString() }
     saveDB(db)
     return json(res, 200, { playerId, username, role: '', friends: [] })
   }
@@ -192,7 +192,7 @@ const server = createServer(async (req, res) => {
   // Public: list all cosmetics definitions
   if (pathname === '/api/cosmetics-defs') return json(res, 200, loadCosmeticsDef())
 
-  // Friends list (per-player)
+  // Friends list (per-player) — only accepted friends
   if (req.method === 'GET' && pathname === '/api/friends') {
     const pid = url.searchParams.get('playerId')
     if (!pid || !db[pid]) return json(res, 400, { error: 'invalid player' })
@@ -200,20 +200,81 @@ const server = createServer(async (req, res) => {
     const friendList = (player.friends || []).map(fid => {
       const f = db[fid]
       if (!f) return null
-      return { id: f.playerId, name: f.username, role: f.role || '', online: wsClients.has(f.playerId), activity: wsClients.has(f.playerId) ? 'Online' : 'Offline' }
+      return { id: f.playerId, name: f.username, role: f.role || '', uuid: f.uuid || '', online: wsClients.has(f.playerId), activity: wsClients.has(f.playerId) ? 'Online' : 'Offline' }
     }).filter(Boolean)
     return json(res, 200, friendList)
   }
 
-  // Add friend
+  // Pending friend requests (incoming)
+  if (req.method === 'GET' && pathname === '/api/friends/requests') {
+    const pid = url.searchParams.get('playerId')
+    if (!pid || !db[pid]) return json(res, 400, { error: 'invalid player' })
+    const requests = (db[pid].friendRequests || []).map(id => {
+      const p = db[id]
+      if (!p) return null
+      return { id: p.playerId, name: p.username, role: p.role || '', uuid: p.uuid || '' }
+    }).filter(Boolean)
+    return json(res, 200, requests)
+  }
+
+  // Add friend — sends a request (adds to recipient's friendRequests + sender's sentRequests)
   if (req.method === 'POST' && pathname === '/api/friends/add') {
     const { playerId, friendId } = await body(req)
     if (!db[playerId] || !db[friendId]) return json(res, 400, { error: 'invalid player' })
+    if (playerId === friendId) return json(res, 400, { error: 'Cannot add yourself' })
+    if ((db[playerId].friends || []).includes(friendId)) return json(res, 400, { error: 'Already friends' })
+    if ((db[friendId].friendRequests || []).includes(playerId)) return json(res, 400, { error: 'Request already sent' })
+    if (!db[friendId].friendRequests) db[friendId].friendRequests = []
+    if (!db[playerId].sentRequests) db[playerId].sentRequests = []
+    if (!db[friendId].friendRequests.includes(playerId)) db[friendId].friendRequests.push(playerId)
+    if (!db[playerId].sentRequests.includes(friendId)) db[playerId].sentRequests.push(friendId)
+    saveDB(db)
+    return json(res, 200, { ok: true })
+  }
+
+  // Sent friend requests (outgoing)
+  if (req.method === 'GET' && pathname === '/api/friends/sent') {
+    const pid = url.searchParams.get('playerId')
+    if (!pid || !db[pid]) return json(res, 400, { error: 'invalid player' })
+    const sent = (db[pid].sentRequests || []).map(id => {
+      const p = db[id]
+      if (!p) return null
+      return { id: p.playerId, name: p.username, role: p.role || '', uuid: p.uuid || '' }
+    }).filter(Boolean)
+    return json(res, 200, sent)
+  }
+
+  // Accept friend request
+  if (req.method === 'POST' && pathname === '/api/friends/accept') {
+    const { playerId, friendId } = await body(req)
+    if (!db[playerId] || !db[friendId]) return json(res, 400, { error: 'invalid player' })
+    db[playerId].friendRequests = (db[playerId].friendRequests || []).filter(f => f !== friendId)
+    if (db[friendId]) db[friendId].sentRequests = (db[friendId].sentRequests || []).filter(f => f !== playerId)
     if (!db[playerId].friends) db[playerId].friends = []
-    if (!db[playerId].friends.includes(friendId)) {
-      db[playerId].friends.push(friendId)
-      saveDB(db)
-    }
+    if (!db[friendId].friends) db[friendId].friends = []
+    if (!db[playerId].friends.includes(friendId)) db[playerId].friends.push(friendId)
+    if (!db[friendId].friends.includes(playerId)) db[friendId].friends.push(playerId)
+    saveDB(db)
+    return json(res, 200, { ok: true })
+  }
+
+  // Reject friend request
+  if (req.method === 'POST' && pathname === '/api/friends/reject') {
+    const { playerId, friendId } = await body(req)
+    if (!db[playerId]) return json(res, 400, { error: 'invalid player' })
+    db[playerId].friendRequests = (db[playerId].friendRequests || []).filter(f => f !== friendId)
+    if (db[friendId]) db[friendId].sentRequests = (db[friendId].sentRequests || []).filter(f => f !== playerId)
+    saveDB(db)
+    return json(res, 200, { ok: true })
+  }
+
+  // Cancel outgoing friend request
+  if (req.method === 'POST' && pathname === '/api/friends/cancel') {
+    const { playerId, friendId } = await body(req)
+    if (!db[playerId]) return json(res, 400, { error: 'invalid player' })
+    db[playerId].sentRequests = (db[playerId].sentRequests || []).filter(f => f !== friendId)
+    if (db[friendId]) db[friendId].friendRequests = (db[friendId].friendRequests || []).filter(f => f !== playerId)
+    saveDB(db)
     return json(res, 200, { ok: true })
   }
 
@@ -222,6 +283,7 @@ const server = createServer(async (req, res) => {
     const { playerId, friendId } = await body(req)
     if (!db[playerId]) return json(res, 400, { error: 'invalid player' })
     db[playerId].friends = (db[playerId].friends || []).filter(f => f !== friendId)
+    if (db[friendId]) db[friendId].friends = (db[friendId].friends || []).filter(f => f !== playerId)
     saveDB(db)
     return json(res, 200, { ok: true })
   }
@@ -230,7 +292,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && pathname === '/api/players/search') {
     const q = (url.searchParams.get('q') || '').toLowerCase()
     const results = Object.values(db).filter(p => p.username.toLowerCase().includes(q)).slice(0, 10)
-    return json(res, 200, results.map(p => ({ id: p.playerId, name: p.username, role: p.role || '' })))
+    return json(res, 200, results.map(p => ({ id: p.playerId, name: p.username, role: p.role || '', uuid: p.uuid || '' })))
   }
 
   // News: GET public list
@@ -363,22 +425,22 @@ const server = createServer(async (req, res) => {
     return
   }
 
-  // Lanyard: get presence for a specific user
+  // Lanyard: get presence for a specific user (official Lanyard API format)
   if (pathname.startsWith('/api/lanyard/')) {
     const userId = pathname.replace('/api/lanyard/', '')
     const presPath = join(__dirname, 'presence.json')
-    if (!existsSync(presPath)) return json(res, 404, { error: 'no presence data' })
+    if (!existsSync(presPath)) return json(res, 200, { success: true, data: null })
     const all = JSON.parse(readFileSync(presPath, 'utf8'))
-    if (!all[userId]) return json(res, 404, { error: 'user not found' })
-    return json(res, 200, { data: all[userId] })
+    if (!all[userId]) return json(res, 200, { success: true, data: null })
+    return json(res, 200, { success: true, data: all[userId] })
   }
 
   // Lanyard: list all tracked users' presence
   if (pathname === '/api/lanyard') {
     const presPath = join(__dirname, 'presence.json')
-    if (!existsSync(presPath)) return json(res, 200, [])
+    if (!existsSync(presPath)) return json(res, 200, { success: true, data: [] })
     const all = JSON.parse(readFileSync(presPath, 'utf8'))
-    return json(res, 200, Object.values(all).filter(Boolean))
+    return json(res, 200, { success: true, data: Object.values(all).filter(Boolean) })
   }
 
   // ── Admin Auth (Discord OAuth2) ──
@@ -810,6 +872,29 @@ const server = createServer(async (req, res) => {
 // ── WebSocket Server ──
 const wss = new WebSocketServer({ server })
 const wsClients = new Map()
+const lanyardSubs = new Map() // clientId -> { ws, subscribed: Set<string> }
+
+// Watch presence.json for changes and notify lanyard subscribers
+const presPath = join(__dirname, 'presence.json')
+let lastPresence = ''
+setInterval(() => {
+  try {
+    if (existsSync(presPath)) {
+      const raw = readFileSync(presPath, 'utf8')
+      if (raw !== lastPresence) {
+        lastPresence = raw
+        const all = JSON.parse(raw)
+        lanyardSubs.forEach((sub) => {
+          sub.subscribed.forEach(uid => {
+            if (all[uid]) {
+              try { sub.ws.send(JSON.stringify({ op: 0, t: 'PRESENCE_UPDATE', d: all[uid] })) } catch {}
+            }
+          })
+        })
+      }
+    }
+  } catch {}
+}, 3000)
 
 wss.on('connection', (ws, req) => {
   const clientId = randomUUID().slice(0, 8)
@@ -820,6 +905,49 @@ wss.on('connection', (ws, req) => {
   ws.on('message', raw => {
     try {
       const msg = JSON.parse(raw.toString())
+
+      // Lanyard protocol (op-based messages)
+      if (msg.op !== undefined) {
+        if (msg.op === 1) {
+          // Hello — server-initiated only, ignore
+          return
+        }
+        if (msg.op === 2) {
+          // Initialize — subscribe to presences
+          let ids = new Set()
+          if (Array.isArray(msg.d?.subscribe_to_ids)) msg.d.subscribe_to_ids.forEach(id => ids.add(id))
+          else if (msg.d?.subscribe_to_id) ids.add(msg.d.subscribe_to_id)
+          if (ids.size > 0) {
+            lanyardSubs.set(clientId, { ws, subscribed: ids })
+            const all = {}
+            try {
+              if (existsSync(presPath)) {
+                const parsed = JSON.parse(readFileSync(presPath, 'utf8'))
+                ids.forEach(id => { if (parsed[id]) all[id] = parsed[id] })
+              }
+            } catch {}
+            ws.send(JSON.stringify({ op: 0, t: 'INIT_STATE', d: all }))
+          }
+          return
+        }
+        if (msg.op === 3) {
+          // Heartbeat — reply with op 3 (some clients expect ack)
+          ws.send(JSON.stringify({ op: 3 }))
+          return
+        }
+        if (msg.op === 4) {
+          // Unsubscribe
+          const sub = lanyardSubs.get(clientId)
+          if (sub) {
+            if (msg.d?.unsubscribe_from_id) sub.subscribed.delete(msg.d.unsubscribe_from_id)
+            if (Array.isArray(msg.d?.unsubscribe_from_ids)) msg.d.unsubscribe_from_ids.forEach(id => sub.subscribed.delete(id))
+            if (msg.d?.unsubscribe_from_all) lanyardSubs.delete(clientId)
+            else if (sub.subscribed.size === 0) lanyardSubs.delete(clientId)
+          }
+          return
+        }
+        return
+      }
 
       switch (msg.type) {
         case 'identify':
@@ -909,6 +1037,12 @@ wss.on('connection', (ws, req) => {
         case 'private-chat':
           const sender = wsClients.get(clientId)
           if (sender && msg.to) {
+            // Must be friends
+            const senderData = db[sender.playerId]
+            if (!senderData || !(senderData.friends || []).includes(msg.to)) {
+              ws.send(JSON.stringify({ type: 'system', text: 'You must be friends to send a private message' }))
+              break
+            }
             const target = Array.from(wsClients.values()).find(c => c.playerId === msg.to)
             if (target) {
               target.ws.send(JSON.stringify({ type: 'private-chat', from: sender.username, fromId: sender.playerId, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }))
@@ -928,6 +1062,7 @@ wss.on('connection', (ws, req) => {
       broadcast({ type: 'system', text: `${client.username} left` })
     }
     wsClients.delete(clientId)
+    lanyardSubs.delete(clientId)
     broadcastOnline()
   })
 })

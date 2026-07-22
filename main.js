@@ -495,3 +495,44 @@ ipcMain.handle('mc:list-jres', async () => {
   }
   return jres;
 });
+
+// ── Discord Rich Presence ──
+let discordRpc = null;
+let discordReady = false;
+
+ipcMain.handle('discord:start', async (_, activity) => {
+  try {
+    if (discordRpc) { try { discordRpc.destroy() } catch {} }
+    const DiscordRPC = require('discord-rpc');
+    const clientId = '1528534548940456116';
+    const client = new DiscordRPC.Client({ transport: 'ipc' });
+    discordReady = false;
+    await new Promise((resolve, reject) => {
+      client.on('ready', () => {
+        discordReady = true;
+        if (activity) {
+          client.setActivity(activity).catch(() => {});
+        }
+        resolve();
+      });
+      client.login({ clientId }).catch(err => { discordRpc = null; discordReady = false; reject(err) });
+    });
+    discordRpc = client;
+    return true;
+  } catch { return false }
+});
+
+ipcMain.handle('discord:update', async (_, activity) => {
+  if (!discordRpc || !discordReady) return false;
+  try {
+    await discordRpc.setActivity(activity);
+    return true;
+  } catch { return false }
+});
+
+ipcMain.handle('discord:stop', async () => {
+  if (!discordRpc) return;
+  discordReady = false;
+  try { discordRpc.destroy() } catch {}
+  discordRpc = null;
+});

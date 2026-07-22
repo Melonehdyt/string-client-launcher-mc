@@ -36,4 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listLibraries: (v) => ipcRenderer.invoke('mc:list-libraries', v),
   listJres: () => ipcRenderer.invoke('mc:list-jres'),
   deleteProfile: (version) => ipcRenderer.invoke('mc:delete-profile', version),
+
+  // Discord Rich Presence
+  discordStart: (activity) => ipcRenderer.invoke('discord:start', activity),
+  discordUpdate: (activity) => ipcRenderer.invoke('discord:update', activity),
+  discordStop: () => ipcRenderer.invoke('discord:stop'),
 });
