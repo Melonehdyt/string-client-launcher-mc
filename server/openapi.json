@@ -1,0 +1,577 @@
+{
+  "openapi": "3.0.0",
+  "info": { "version": "1.0.0", "title": "String Client API" },
+  "servers": [
+    { "url": "https://stringclient.com", "description": "Production" }
+  ],
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "description": "Error message" }
+        },
+        "required": ["error"]
+      },
+      "LauncherMetadata": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "string", "description": "Current launcher version" },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "example": "1.21.4" },
+                "label": { "type": "string", "example": "Minecraft 1.21.4" },
+                "color": { "type": "string", "example": "#3b82f6" },
+                "sub": { "type": "string", "example": "Latest Release" }
+              }
+            }
+          },
+          "announcements": { "type": "array", "items": { "$ref": "#/components/schemas/LauncherAnnouncement" } },
+          "servers": { "type": "array", "items": { "$ref": "#/components/schemas/LauncherServer" } },
+          "cosmetics": { "type": "array", "items": { "$ref": "#/components/schemas/Cosmetic" } }
+        }
+      },
+      "LauncherAnnouncement": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "text": { "type": "string" },
+          "tag": { "type": "string" },
+          "image": { "type": "string", "nullable": true },
+          "link": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "LauncherServer": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "online": { "type": "string", "description": "Online status text" },
+          "ip": { "type": "string", "nullable": true },
+          "version": { "type": "string", "nullable": true }
+        }
+      },
+      "Cosmetic": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["cape", "particle", "badge", "emote"] },
+          "image": { "type": "string" },
+          "rarity": { "type": "string", "enum": ["common", "rare", "epic", "legendary"] }
+        }
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "uuid": { "type": "string", "format": "uuid" },
+          "playerId": { "type": "string" },
+          "role": { "type": "string", "description": "Staff role", "nullable": true },
+          "skin": { "type": "string", "nullable": true },
+          "cape": { "type": "string", "nullable": true },
+          "cosmetics": { "type": "array", "items": { "type": "string" } },
+          "friends": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ServerPlayerInfo": {
+        "type": "object",
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "username": { "type": "string" },
+          "online": { "type": "boolean" },
+          "role": { "type": "string", "nullable": true },
+          "hasSubscription": { "type": "boolean" }
+        }
+      },
+      "CrashReport": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "type": "string" },
+          "error": { "type": "string" },
+          "stacktrace": { "type": "string" },
+          "log": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ModerationResult": {
+        "type": "object",
+        "properties": {
+          "flagged": { "type": "boolean" },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Flagged categories if any"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "players": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/launcher/metadata": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Get launcher metadata (versions, announcements, servers, cosmetics)",
+        "responses": {
+          "200": {
+            "description": "Launcher metadata",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LauncherMetadata" } } }
+          }
+        }
+      }
+    },
+    "/api/launcher/servers": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Get recommended server list",
+        "responses": {
+          "200": {
+            "description": "Server list",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LauncherServer" } } } }
+          }
+        }
+      }
+    },
+    "/api/launcher/status": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Get launcher service status",
+        "responses": {
+          "200": {
+            "description": "Service status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "online": { "type": "boolean" },
+                    "players": { "type": "integer" },
+                    "version": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/launcher/moderation/nsfw": {
+      "post": {
+        "tags": ["launcher"],
+        "summary": "Check text for NSFW content",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moderation result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModerationResult" } } }
+          }
+        }
+      }
+    },
+    "/api/launcher/moderation/profanity": {
+      "post": {
+        "tags": ["launcher"],
+        "summary": "Check text for profanity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moderation result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModerationResult" } } }
+          }
+        }
+      }
+    },
+    "/api/user/profile": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get user profile",
+        "parameters": [
+          {
+            "name": "playerId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserProfile" } } }
+          },
+          "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/server/player-info/{uuid}": {
+      "get": {
+        "tags": ["server"],
+        "summary": "Look up player info by UUID",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Player info",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServerPlayerInfo" } } }
+          },
+          "404": { "description": "Player not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/game/crashReport": {
+      "post": {
+        "tags": ["game"],
+        "summary": "Submit a crash report",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": { "type": "string" },
+                  "error": { "type": "string" },
+                  "stacktrace": { "type": "string" },
+                  "log": { "type": "string" }
+                },
+                "required": ["version", "error", "stacktrace"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Crash report submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/index/cosmetics": {
+      "get": {
+        "tags": ["index"],
+        "summary": "Get all available cosmetics",
+        "responses": {
+          "200": {
+            "description": "Cosmetics list",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Cosmetic" } } } }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Register or update a player",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "schema": { "type": "string" },
+            "description": "Admin token for authentication"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "uuid": { "type": "string", "format": "uuid" }
+                },
+                "required": ["username", "uuid"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Player registered" },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/news": {
+      "get": {
+        "tags": ["content"],
+        "summary": "Get latest news",
+        "responses": {
+          "200": {
+            "description": "News list",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LauncherAnnouncement" } } } }
+          }
+        }
+      }
+    },
+    "/api/blog": {
+      "get": {
+        "tags": ["content"],
+        "summary": "Get blog posts",
+        "responses": {
+          "200": {
+            "description": "Blog list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "title": { "type": "string" },
+                      "text": { "type": "string" },
+                      "image": { "type": "string", "nullable": true },
+                      "createdAt": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/player/role": {
+      "get": {
+        "tags": ["player"],
+        "summary": "Get player role",
+        "parameters": [
+          {
+            "name": "playerId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Player role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cosmetics": {
+      "get": {
+        "tags": ["player"],
+        "summary": "Get player cosmetics",
+        "responses": {
+          "200": {
+            "description": "Cosmetics data",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      },
+      "put": {
+        "tags": ["player"],
+        "summary": "Update player cosmetics",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "playerId": { "type": "string" },
+                  "equipped": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Cosmetics updated" }
+        }
+      }
+    },
+    "/api/versions": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Get available Minecraft versions",
+        "responses": {
+          "200": {
+            "description": "Version list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "label": { "type": "string" },
+                      "color": { "type": "string" },
+                      "sub": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends": {
+      "get": {
+        "tags": ["social"],
+        "summary": "Get player's friends list",
+        "parameters": [
+          { "name": "playerId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Friends list" }
+        }
+      }
+    },
+    "/api/friends/add": {
+      "post": {
+        "tags": ["social"],
+        "summary": "Add a friend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "playerId": { "type": "string" },
+                  "username": { "type": "string" }
+                },
+                "required": ["playerId", "username"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Friend added" }
+        }
+      }
+    },
+    "/api/friends/remove": {
+      "post": {
+        "tags": ["social"],
+        "summary": "Remove a friend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "playerId": { "type": "string" },
+                  "friendId": { "type": "string" }
+                },
+                "required": ["playerId", "friendId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Friend removed" }
+        }
+      }
+    },
+    "/api/players/search": {
+      "get": {
+        "tags": ["social"],
+        "summary": "Search for players",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Search results" }
+        }
+      }
+    },
+    "/api/version-banners": {
+      "get": {
+        "tags": ["launcher"],
+        "summary": "Get version banner image paths",
+        "responses": {
+          "200": {
+            "description": "Banner map (version -> image path)",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    }
+  }
+}

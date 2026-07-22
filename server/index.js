@@ -90,6 +90,7 @@ const mutes = new Map() // playerId -> timeout (ms timestamp)
 const bans = new Set()   // playerId strings
 const rateLimits = new Map() // clientId -> { lastMsg, count, firstMsg, lastText, textCount }
 let slowmodeSec = 0 // 0 = disabled
+let lockdown = false // when true, only Owner/Admin can chat
 const MAX_MSG_LENGTH = 500
 const SPAM_INTERVAL = 1200 // ms between messages
 const SPAM_WINDOW = 10000  // ms window for counting
@@ -281,6 +282,86 @@ const server = createServer(async (req, res) => {
 
   // Public: list all known versions with metadata
   if (pathname === '/api/versions') return json(res, 200, loadVersions())
+
+  // LunarClient-style structured API endpoints
+  if (pathname === '/api/launcher/metadata') {
+    const versions = loadVersions()
+    const announcements = loadNews()
+    const cosmetics = loadCosmeticsDef()
+    return json(res, 200, {
+      version: '2.0.0',
+      versions,
+      announcements: Array.isArray(announcements) ? announcements.slice(0, 5) : [],
+      servers: loadServers(),
+      cosmetics: Array.isArray(cosmetics) ? cosmetics : [],
+    })
+  }
+  if (pathname === '/api/launcher/servers') {
+    return json(res, 200, loadServers())
+  }
+  if (pathname === '/api/launcher/status') {
+    return json(res, 200, {
+      online: true,
+      players: Object.keys(db).length,
+      version: '2.0.0',
+    })
+  }
+  if (pathname === '/api/launcher/moderation/nsfw' && req.method === 'POST') {
+    return json(res, 200, { flagged: false, categories: [] })
+  }
+  if (pathname === '/api/launcher/moderation/profanity' && req.method === 'POST') {
+    return json(res, 200, { flagged: false, categories: [] })
+  }
+  if (pathname === '/api/index/cosmetics') {
+    return json(res, 200, loadCosmeticsDef())
+  }
+  if (pathname === '/api/user/profile' && req.method === 'GET') {
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    const playerId = url.searchParams.get('playerId')
+    if (!playerId) return json(res, 400, { error: 'playerId required' })
+    const player = db[playerId]
+    if (!player) return json(res, 404, { error: 'Player not found' })
+    return json(res, 200, {
+      username: player.username || '',
+      uuid: player.uuid || '',
+      playerId,
+      role: player.role || null,
+      skin: player.skin || null,
+      cape: player.cape || null,
+      cosmetics: player.cosmetics || [],
+      friends: player.friends || [],
+    })
+  }
+  if (req.method === 'GET' && pathname.startsWith('/api/server/player-info/')) {
+    const lookupUuid = pathname.replace('/api/server/player-info/', '')
+    const entry = Object.entries(db).find(([, p]) => p.uuid === lookupUuid)
+    if (!entry) return json(res, 404, { error: 'Player not found' })
+    const [pid, pdata] = entry
+    const online = Array.from(wsClients.values()).some(c => c.playerId === pid)
+    return json(res, 200, {
+      uuid: lookupUuid,
+      username: pdata.username || '',
+      online,
+      role: pdata.role || null,
+      hasSubscription: !!pdata.subscription,
+    })
+  }
+  if (pathname === '/api/game/crashReport' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => { body += c })
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body)
+        const report = { id: randomUUID(), ...data, createdAt: new Date().toISOString() }
+        const reportsPath = join(__dirname, 'crash-reports.json')
+        const reports = existsSync(reportsPath) ? JSON.parse(readFileSync(reportsPath, 'utf8')) : []
+        reports.push(report)
+        writeFileSync(reportsPath, JSON.stringify(reports, null, 2))
+        return json(res, 200, { id: report.id, message: 'Crash report submitted' })
+      } catch { return json(res, 400, { error: 'Invalid JSON' }) }
+    })
+    return
+  }
 
   // Lanyard: get presence for a specific user
   if (pathname.startsWith('/api/lanyard/')) {
@@ -752,8 +833,8 @@ wss.on('connection', (ws, req) => {
           if (!client) break
           // Check mute
           if (client.playerId && mutes.has(client.playerId)) {
-            const until = mutes.get(client.playerId)!
-            if (Date.now() < until) {
+            const until = mutes.get(client.playerId)
+            if (until && Date.now() < until) {
               ws.send(JSON.stringify({ type: 'system', text: `You are muted for ${Math.ceil((until - Date.now()) / 60000)} more minute(s)` }))
               break
             }
@@ -767,6 +848,11 @@ wss.on('connection', (ws, req) => {
           // Handle commands
           if (msg.text.startsWith('/')) {
             handleCommand(client, msg.text, ws)
+            break
+          }
+          // Lockdown check
+          if (lockdown && !isMod(client.playerId)) {
+            ws.send(JSON.stringify({ type: 'system', text: 'Chat is locked — only staff can speak' }))
             break
           }
           // Spam / rate-limit check
@@ -810,7 +896,14 @@ wss.on('connection', (ws, req) => {
             rateLimits.set(clientId, rl)
           }
           const playerRole = (client.playerId && db[client.playerId]?.role) || ''
-          broadcast({ type: 'chat', username: client.username, role: playerRole, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+          broadcast({ type: 'chat', id: randomUUID(), username: client.username, role: playerRole, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+          break
+
+        case 'chat:delete':
+          const deleter = wsClients.get(clientId)
+          if (deleter?.playerId && isMod(deleter.playerId) && msg.msgId) {
+            broadcast({ type: 'chat:delete', msgId: msg.msgId })
+          }
           break
 
         case 'private-chat':
@@ -843,7 +936,7 @@ function findPlayer(username) {
   return Array.from(wsClients.values()).find(c => c.username?.toLowerCase() === username.toLowerCase())
 }
 function findPlayerId(username) {
-  const p = Object.values(db).find((p: any) => p.username?.toLowerCase() === username.toLowerCase())
+  const p = Object.values(db).find(p => p.username?.toLowerCase() === username.toLowerCase())
   return p ? p.playerId : null
 }
 function sendToPlayer(username, data) {
@@ -862,13 +955,14 @@ function handleCommand(client, text, ws) {
   const parts = text.slice(1).split(' ').filter(Boolean)
   const cmd = parts[0]?.toLowerCase()
   const targetName = parts[1]
-  if (!cmd) { ws.send(JSON.stringify({ type: 'system', text: 'Usage: /mute <name> [minutes], /unmute <name>, /kick <name>, /ban <name>, /unban <name>, /warn <name> [reason], /clear, /slowmode <sec>, /say <msg>, /list' })); return }
+  if (!cmd) { ws.send(JSON.stringify({ type: 'system', text: 'Commands: /mute, /unmute, /kick, /ban, /unban, /warn, /clear, /lock, /slowmode, /say, /list' })); return }
   if (!client.playerId) { ws.send(JSON.stringify({ type: 'system', text: 'You must be logged in' })); return }
   const isStaff = isMod(client.playerId)
 
   // Commands that don't need a target
   if (cmd === 'clear') {
     if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    broadcast({ type: 'chat:clear' })
     broadcast({ type: 'system', text: 'Chat was cleared by ' + client.username })
     return
   }
@@ -884,6 +978,13 @@ function handleCommand(client, text, ws) {
     if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
     const announcement = parts.slice(1).join(' ')
     if (announcement) broadcast({ type: 'system', text: '📢 ' + announcement })
+    return
+  }
+  if (cmd === 'lock') {
+    if (!isStaff) { ws.send(JSON.stringify({ type: 'system', text: 'No permission' })); return }
+    lockdown = !lockdown
+    broadcast({ type: 'chat:lock', locked: lockdown })
+    broadcast({ type: 'system', text: `Chat was ${lockdown ? 'locked 🔒' : 'unlocked 🔓'} by ${client.username}` })
     return
   }
   if (cmd === 'list') {
@@ -972,6 +1073,14 @@ function getOnlineFriends() {
   return Array.from(wsClients.values())
     .filter(c => c.username && c.username !== 'Guest')
     .map(c => ({ name: c.username, id: c.playerId, role: (c.playerId && db[c.playerId]?.role) || '', activity: 'Playing String Client' }))
+}
+
+function loadServers() {
+  const p = join(__dirname, 'servers.json')
+  if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8'))
+  return [
+    { name: 'String Client Hub', online: '127.0.0.1:25565', ip: '127.0.0.1', version: '1.21.x' }
+  ]
 }
 
 server.listen(PORT, '0.0.0.0', () => {

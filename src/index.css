@@ -998,11 +998,13 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .chat-msgs::-webkit-scrollbar-track { background: transparent; }
 .chat-msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
 .chat-msgs::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-.chat-msg { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+.chat-msg { margin-bottom: 8px; font-size: 13px; line-height: 1.5; display: flex; align-items: center; gap: 0; }
 .chat-time { color: rgba(255,255,255,0.1); margin-right: 6px; font-size: 10px; font-family: monospace; }
 .chat-who { color: rgba(255,255,255,0.7); font-weight: 500; margin-right: 4px; }
-.chat-body { color: rgba(255,255,255,0.3); }
+.chat-body { color: rgba(255,255,255,0.3); flex: 1; }
 .chat-system .chat-body { color: rgba(255,255,255,0.4); font-style: italic; }
+.chat-del { margin-left: auto; padding: 1px 6px; font-size: 9px; cursor: pointer; color: rgba(255,80,80,0.4); border-radius: 3px; user-select: none; flex-shrink: 0; }
+.chat-del:hover { color: rgba(255,80,80,0.9); background: rgba(255,80,80,0.1); }
 .chat-foot { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; gap: 8px; }
 .chat-foot input { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 10px 14px; color: rgba(255,255,255,0.7); font-size: 13px; outline: none; font-family: inherit; }
 .chat-foot input:focus { border-color: rgba(255,255,255,0.15); }

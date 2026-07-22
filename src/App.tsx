@@ -60,15 +60,11 @@ const DEFAULT_VERSIONS = [
 let VERSIONS = [...DEFAULT_VERSIONS]
 
 // Fetch version metadata from server (silent fallback to defaults)
-fetch(`${API}/api/versions`).then(r => r.json()).then(list => {
-  if (Array.isArray(list) && list.length) VERSIONS = list
+fetch(`${API}/api/launcher/metadata`).then(r => r.json()).then(d => {
+  if (Array.isArray(d.versions) && d.versions.length) VERSIONS = d.versions
 }).catch(() => {})
 const INSTANCE_COLORS = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#f472b6','#38bdf8','#ef4444','#fb923c','#a78bfa','#2dd4bf','#fbbf24','#818cf8']
 const VERSION_BANNERS_API = `${API}/api/version-banners`
-const DEFAULT_SERVERS = [
-  { name: 'Hypixel', online: '54.2k' }, { name: 'GommeHD', online: '18.7k' },
-  { name: 'Mineplex', online: '6.2k' }, { name: 'CubeCraft', online: '4.8k' },
-]
 const isVideo = (u: string) =>
   u.startsWith('blob:') ||
   u.startsWith('file://') ||
@@ -199,12 +195,13 @@ export default function App() {
   const [onlineList, setOnlineList] = useState<string[]>([])
   const [privateChatMsgs, setPrivateChatMsgs] = useState<any[]>([])
   const [privateChatPartner, setPrivateChatPartner] = useState<string | null>(null)
+  const [chatLocked, setChatLocked] = useState(false)
   const [selectedVer, setSelectedVer] = useState('1.21.4')
   const [ram, setRam] = useState(4)
   const [jvm, setJvm] = useState('-XX:+UseG1GC -Xss1M')
   const [mcPath, setMcPath] = useState('')
   const [instances, setInstances] = useState<any[]>([])
-  const [servers, setServers] = useState(DEFAULT_SERVERS)
+  const [servers, setServers] = useState<any[]>([])
   const [launching, setLaunching] = useState(false)
   const [launchPid, setLaunchPid] = useState<number | null>(null)
   const [accounts, setAccounts] = useState<any[]>([])
@@ -243,7 +240,7 @@ export default function App() {
       const validBg = d.bg && (d.bg.startsWith('http://') || d.bg.startsWith('https://')) ? d.bg : DEFAULT_BG
       setTheme(d.theme || 'dark'); setBgUrl(validBg); setBgOverlayColor(d.overlay || ''); setRam(d.ram || 4)
       setJvm(d.jvm || '-XX:+UseG1GC -Xss1M'); setMcPath(d.mcPath || '')
-      setInstances(d.instances || []); setServers(d.servers || DEFAULT_SERVERS)
+      setInstances(d.instances || []); setServers(d.servers || [])
       if (d.u) setLoggedIn(true)
       // Load cosmetics from server (merge with local)
       if (d.id) {
@@ -287,8 +284,9 @@ export default function App() {
           else if (msg.type === 'online-update') setOnlineList(Array.isArray(msg.online) ? msg.online : [])
           else if (msg.type === 'private-chat') setPrivateChatMsgs(prev => [...prev, { ...msg, time: msg.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
           else if (msg.type === 'notification') { if (notificationsEnabledRef.current) { setNotifications(prev => [{ id: Date.now(), ...msg, time: msg.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), read: false }, ...prev]); setNotifications(prev => { if (prev.length > 50) return prev.slice(0, 50); return prev }) } }
-        } catch {}
-      }
+          else if (msg.type === 'chat:clear') setChatMsgs([])
+          else if (msg.type === 'chat:delete') setChatMsgs(prev => prev.filter(m => m.id !== msg.msgId))
+          else if (msg.type === 'chat:lock') setChatLocked(msg.locked)
       ws.onclose = () => setWsConnected(false)
       wsRef.current = ws
       return () => ws.close()
@@ -303,6 +301,13 @@ export default function App() {
     if (!loggedIn || !playerId) return
     fetch(`${API}/api/friends?playerId=${playerId}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setFriends(d.filter((f: any) => f.id !== playerId)) }).catch(() => {})
   }, [loggedIn, playerId])
+
+  // Fetch server list from API (merges with local defaults)
+  useEffect(() => {
+    fetch(`${API}/api/launcher/servers`).then(r => r.json()).then(list => {
+      if (Array.isArray(list) && list.length) setServers(list)
+    }).catch(() => {})
+  }, [])
 
   // Login
   const handleMsLogin = async () => {
@@ -347,7 +352,7 @@ export default function App() {
     setSkinUrl(acc.skin || `https://mineskin.eu/skin/${acc.u}`); setCapeUrl('')
     setShowAccountPicker(false); setLoggedIn(true)
     fetchMojangCape(acc.uuid).then(url => { if (url) setCapeUrl(url) })
-    fetch(`${API}/api/player/role?playerId=${acc.id}`).then(r => r.json()).then(d => { if (d.role !== undefined) setRole(d.role) }).catch(() => {})
+    fetch(`${API}/api/user/profile?playerId=${acc.id}`).then(r => r.json()).then(d => { if (d.role !== undefined) setRole(d.role) }).catch(() => {})
   }
 
   const sendChat = useCallback((text: string) => {
@@ -359,6 +364,12 @@ export default function App() {
   const sendPrivateChat = useCallback((to: string, text: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'private-chat', to, text }))
+    }
+  }, [])
+
+  const sendDelete = useCallback((msgId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'chat:delete', msgId }))
     }
   }, [])
 
@@ -513,7 +524,8 @@ export default function App() {
           <header className="topbar">
             <div className="topbar-left">
               <span className="topbar-title">String Client</span>
-              <div className="topbar-badge"><span className="dot" />{wsConnected ? 'Connected' : 'Offline'}</div>
+              <span className="topbar-badge"><span className="dot" />{wsConnected ? 'Connected' : 'Offline'}</span>
+              <span className="topbar-badge" style={{ marginLeft: 6 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.3)', display: 'inline-block' }} /> {onlineList.length} online</span>
               <span className="topbar-tab">{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
             </div>
             <div className="topbar-right" style={{ position: 'relative' }}>
@@ -587,6 +599,7 @@ export default function App() {
                 launchPid={launchPid}
                 onLaunch={handleLaunch}
                 onKill={handleKill}
+                friends={friends}
                 onlineList={onlineList}
                 hasSubscription={hasSubscription}
               />
@@ -611,6 +624,9 @@ export default function App() {
                 partner={privateChatPartner}
                 playerId={playerId}
                 onClosePrivate={() => setPrivateChatPartner(null)}
+                role={role}
+                onDeleteMsg={sendDelete}
+                chatLocked={chatLocked}
               />
             )}
             {tab === 'friends' && (
@@ -706,18 +722,18 @@ function SideBtn({ id, icon, tab, setTab }: { id: string; icon: string; tab: str
 }
 
 /* ── Home ── */
-function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, onlineList, hasSubscription }: {
+function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunch, onKill, onlineList, friends, hasSubscription }: {
   username: string; selectedVer: string; servers: { name: string; online: string }[]
   launching: boolean; launchPid: number | null
   onLaunch: (v: string, s?: { resolution?: string; loader?: string }) => void; onKill: () => void
-  onlineList: any[]; hasSubscription: boolean
+  onlineList: any[]; friends: any[]; hasSubscription: boolean
 }) {
   const [news, setNews] = useState<any[]>([])
   const [selectedNews, setSelectedNews] = useState<any>(null)
   const fetchNews = () => {
-    fetch(`${API}/api/news`)
+    fetch(`${API}/api/launcher/metadata`)
       .then(r => r.json()).then(d => {
-        if (Array.isArray(d)) setNews(d.slice(0, 5))
+        if (Array.isArray(d.announcements)) setNews(d.announcements.slice(0, 5))
       }).catch(() => {})
   }
 
@@ -759,6 +775,7 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
           </div>
         </div>
 
+        {servers.length > 0 && (
         <div className="panel">
           <div className="panel-title">Quick Launch</div>
           <div className="server-strip">
@@ -770,6 +787,7 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
             ))}
           </div>
         </div>
+        )}
 
         <div className="panel">
           <div className="panel-title">Latest News</div>
@@ -816,14 +834,19 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
 
       <div className="home-side">
         <div className="panel">
-          <div className="panel-title">Online <span style={{ color: 'rgba(255,255,255,0.3)' }}>({onlineList.length})</span></div>
-          {onlineList.length === 0 ? (
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.15)', padding: '6px 0' }}>No players online</div>
-          ) : (
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', padding: '6px 0' }}>
-              {onlineList.length} player{onlineList.length !== 1 ? 's' : ''} currently online
+          <div className="panel-title">Friends ({friends.length})</div>
+          {friends.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.15)', padding: '6px 0' }}>No friends added</div>
+          ) : friends.map((f: any) => {
+            const roleC = ({Owner:'#fbbf24',Admin:'#f87171',Developer:'#60a5fa',Tester:'#a78bfa',Partner:'#4ade80'} as any)[f.role] || ''
+            return (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, marginBottom: 2, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'rgba(74,222,128,0.7)' : 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{f.name}</span>
+              {f.role && <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, color: roleC, background: roleC + '22', border: '1px solid ' + roleC + '44' }}>{f.role}</span>}
             </div>
-          )}
+            )
+          })}
         </div>
 
         {!hasSubscription && (
@@ -1399,10 +1422,11 @@ function ModrinthTab({ instances }: { instances: any[] }) {
 }
 
 /* ── Chat ── */
-function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSendPrivate, partner, playerId, onClosePrivate }: {
+function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSendPrivate, partner, playerId, onClosePrivate, role, onDeleteMsg, chatLocked }: {
   chatMsgs: any[]; onSend: (t: string) => void; onlineList: any[]; username: string
   privateChatMsgs: any[]; onSendPrivate: (to: string, t: string) => void
   partner: string | null; playerId: string; onClosePrivate: () => void
+  role: string; onDeleteMsg: (id: string) => void; chatLocked: boolean
 }) {
   const [input, setInput] = useState('')
   const [privInput, setPrivInput] = useState('')
@@ -1416,22 +1440,30 @@ function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSe
 
   const onlineNames = onlineList.map((o: any) => typeof o === 'string' ? o : o.name)
 
+  const isStaff = role === 'Owner' || role === 'Admin'
+  const roleColors: Record<string,string> = { Owner:'#fbbf24', Admin:'#f87171', Developer:'#60a5fa', Tester:'#a78bfa', Partner:'#4ade80' }
+  const roleBadge = (r: string) => {
+    const c = roleColors[r] || '#888'
+    return <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 5, marginRight: 7, background: c + '22', color: c, border: '1px solid ' + c + '44' }}>{r}</span>
+  }
+
   return (
     <div className="chat-tab">
       <div className="panel chat-main">
         <div className="chat-head">
-          <h3>{partner ? `Private: ${onlineNames.find((n: string) => n === '') || 'Chat'}` : 'Global Chat'}</h3>
+          <h3>{partner ? `Private: ${onlineNames.find((n: string) => n === '') || 'Chat'}` : 'Global Chat'}{!partner && chatLocked && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171' }}>🔒 Locked</span>}</h3>
           <span className="chat-online">● {onlineList.length} online</span>
           {partner && <button className="chat-send" style={{ marginLeft: 'auto', fontSize: 10 }} onClick={onClosePrivate}>Back to global</button>}
         </div>
 
         <div className="chat-msgs" ref={partner ? privRef : ref}>
           {(partner ? privMsgs : chatMsgs).map((m, i) => (
-            <div key={i} className={`chat-msg ${m.type === 'system' ? 'chat-system' : ''} ${m.fromId === playerId || m.sent ? 'chat-self' : ''}`}>
+            <div key={m.id || i} className={`chat-msg ${m.type === 'system' ? 'chat-system' : ''} ${m.fromId === playerId || m.sent ? 'chat-self' : ''}`}>
               {m.time && <span className="chat-time">{m.time}</span>}
-              {m.username && !m.sent && <><span className="chat-who">{m.username}</span>{m.role ? <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>{m.role}</span> : ''}</>}
+              {m.username && !m.sent && <><span className="chat-who">{m.username}</span>{m.role ? roleBadge(m.role) : ''}</>}
               {m.sent && <span className="chat-who" style={{ color: 'rgba(255,255,255,0.2)' }}>you</span>}
               <span className="chat-body">{m.text}</span>
+              {isStaff && m.id && <span className="chat-del" onClick={() => onDeleteMsg(m.id)}>✕</span>}
             </div>
           ))}
         </div>
@@ -2084,9 +2116,6 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
           <div className="set-row">
             <button className="promo-sub" style={{ padding: '4px 12px', fontSize: 10 }} onClick={() => setServers([...servers, { name: 'New Server', online: '0' }])}>
               + Add Server
-            </button>
-            <button className="promo-sub" style={{ padding: '4px 12px', fontSize: 10, background: 'rgba(255,255,255,0.05)' }} onClick={() => setServers(DEFAULT_SERVERS)}>
-              Reset
             </button>
           </div>
         </div>
