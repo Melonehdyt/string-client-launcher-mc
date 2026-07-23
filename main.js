@@ -1,9 +1,10 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, execSync } = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
-const { loginWithMicrosoft, refreshMinecraftToken } = require('./auth-main');
+const { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession } = require('./auth-main');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -11,7 +12,7 @@ let mainWindow;
 let mcProcess = null;
 const DATA_DIR = path.join(app.getPath('userData'), 'String Client');
 
-// Lunar-inspired directory structure
+// TRANSPERENT-inspired directory structure
 const DIRS = {
   data: DATA_DIR,
   backgrounds: path.join(DATA_DIR, 'backgrounds'),
@@ -34,7 +35,7 @@ function ensureDataDirs() {
   });
 }
 
-// ── Custom Java Launcher (Lunar-style) ──
+// ── Custom Java Launcher (transperent-style) ──
 
 function findJava(javaPath) {
   if (javaPath && fs.existsSync(javaPath)) return javaPath;
@@ -170,7 +171,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'String Client',
-    icon: nativeImage.createFromPath(path.join(__dirname, 'buildResources', 'icon.png')),
+    icon: path.join(__dirname, 'buildResources', 'icon-256.png'),
     backgroundColor: '#0b0b12',
     frame: false,
     webPreferences: {
@@ -181,7 +182,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.setIcon(nativeImage.createFromPath(path.join(__dirname, 'buildResources', 'icon.png')));
+  mainWindow.setIcon(nativeImage.createFromPath(path.join(__dirname, 'buildResources', 'icon-256.png')));
 
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, cb) => {
     const headers = { ...details.responseHeaders }
@@ -268,7 +269,7 @@ ipcMain.handle('data:load-accounts', async () => {
 app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.stringclient.launcher');
-    const icoPath = path.join(__dirname, 'buildResources', 'icon.ico');
+    const icoPath = path.join(__dirname, 'buildResources', 'icon-256.png');
     try {
       const ico = nativeImage.createFromPath(icoPath);
       if (!ico.isEmpty()) app.setUserTasks([{ program: process.execPath, arguments: '', iconPath: icoPath, iconIndex: 0, title: 'String Client', description: 'Launch String Client' }]);
@@ -294,6 +295,25 @@ ipcMain.handle('auth:login', async () => {
   }
 });
 
+ipcMain.handle('auth:check', async () => {
+  try {
+    const session = await checkSavedSession();
+    if (session) {
+      // Try silent refresh to verify token is still valid
+      try {
+        const refreshed = await refreshMinecraftToken();
+        return { ...session, accessToken: refreshed.accessToken };
+      } catch {
+        // Saved session exists but token expired — still return profile info
+        return session;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+});
+
 ipcMain.handle('auth:refresh', async () => {
   try {
     const result = await refreshMinecraftToken();
@@ -312,7 +332,7 @@ ipcMain.handle('select-minecraft-path', async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
-// ── Launch (Lunar-style custom launcher) ──
+// ── Launch (TRANSPERENT-style custom launcher) ──
 ipcMain.handle('launch-minecraft', async (_, opts) => {
   const {
     username, version, ram, javaPath, mcPath,
@@ -429,7 +449,7 @@ ipcMain.handle('kill-minecraft', async () => {
   return false;
 });
 
-// ── Version / Profile Management (Lunar-style) ──
+// ── Version / Profile Management (TRANSPERENT-style) ──
 
 ipcMain.handle('mc:list-versions', async () => {
   const versions = [];
@@ -535,4 +555,164 @@ ipcMain.handle('discord:stop', async () => {
   discordReady = false;
   try { discordRpc.destroy() } catch {}
   discordRpc = null;
+});
+
+// ── Installer IPC ──
+const APP_NAME = 'String Client';
+const INSTALL_MARKER = path.join(DATA_DIR, '.installed');
+
+ipcMain.handle('install:check', async () => {
+  return fs.existsSync(INSTALL_MARKER);
+});
+
+ipcMain.handle('install:get-default-path', async () => {
+  return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', APP_NAME);
+});
+
+ipcMain.handle('install:select-path', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select Installation Directory',
+    defaultPath: path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', APP_NAME),
+  });
+  return r.canceled ? null : r.filePaths[0];
+});
+
+const LAUNCHER_DOWNLOAD_URL = 'https://stringclient.com/api/launcher/download';
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    const mod = url.startsWith('https:') ? require('https') : require('http');
+    mod.get(url, res => {
+      if (res.statusCode !== 200) { reject(new Error(`Server returned HTTP ${res.statusCode}`)); return }
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve() });
+    }).on('error', err => { file.close(); try { fs.unlinkSync(dest) } catch {}; reject(err) });
+  });
+}
+
+ipcMain.handle('install:run', async (_, { installPath, desktopShortcut, startMenuShortcut }) => {
+  const send = (msg) => { try { mainWindow.webContents.send('install:log', msg) } catch {} };
+  try {
+    const isDev = !app.isPackaged;
+    const targetDir = installPath;
+    let pkgVer = '1.0.0';
+    try { pkgVer = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version || pkgVer } catch {}
+
+    send('Verifying system requirements...');
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    if (isDev) {
+      // Dev mode: copy files locally for fast iteration
+      send('Copying application files...');
+      function copyRecursive(src, dest) {
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.opencode' || entry.name === 'win-unpacked' || entry.name === 'builder-debug.yml' || entry.name.endsWith('.blockmap')) continue;
+          const s = path.join(src, entry.name);
+          const d = path.join(dest, entry.name);
+          if (entry.isDirectory()) copyRecursive(s, d);
+          else fs.copyFileSync(s, d);
+        }
+      }
+      copyRecursive(__dirname, targetDir);
+    } else {
+      // Packaged mode: copy Electron runtime + bundled files, then download app files from server
+      const srcPath = path.dirname(app.getPath('exe'));
+      send('Copying launcher runtime...');
+      function copyRecursive(src, dest) {
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name === 'node_modules' || entry.name.endsWith('.blockmap')) continue;
+          const s = path.join(src, entry.name);
+          const d = path.join(dest, entry.name);
+          if (entry.isDirectory()) copyRecursive(s, d);
+          else fs.copyFileSync(s, d);
+        }
+      }
+      copyRecursive(srcPath, targetDir);
+
+      send('Downloading latest launcher from server...');
+      const zipDest = path.join(os.tmpdir(), 'string-client-launcher.zip');
+      await downloadFile(LAUNCHER_DOWNLOAD_URL, zipDest);
+      send('Extracting...');
+      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipDest}' -DestinationPath '${targetDir}' -Force"`, { timeout: 60000, shell: true });
+      try { fs.unlinkSync(zipDest) } catch {}
+    }
+
+    send('Installing dependencies...');
+    try {
+      const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      execSync(`${npm} install --omit=dev`, { cwd: targetDir, timeout: 120000, shell: true });
+      send('  ✓ Dependencies installed');
+    } catch (e) { send('  ⚠ Dependency install failed: ' + (e.message || e)); }
+
+    let exePath = path.join(targetDir, 'node_modules', 'electron', 'dist', 'electron.exe');
+    if (!fs.existsSync(exePath)) {
+      exePath = path.join(targetDir, path.basename(app.getPath('exe'))).replace(/\//g, '\\');
+    }
+
+    send('Creating shortcuts...');
+    const shortcutArgs = exePath.endsWith('electron.exe') ? `"${targetDir}"` : '';
+    const shortcutWorkDir = targetDir.replace(/'/g, "''");
+    if (desktopShortcut) {
+      try {
+        const desktopLnk = path.join(os.homedir(), 'Desktop', `${APP_NAME}.lnk`);
+        execSync(`powershell -Command "$ws=New-Object -ComObject WScript.Shell;$s=$ws.CreateShortcut('${desktopLnk.replace(/'/g, "''")}');$s.TargetPath='${exePath.replace(/'/g, "''")}';$s.Arguments='${shortcutArgs}';$s.WorkingDirectory='${shortcutWorkDir}';$s.Save()"`, { timeout: 10000, shell: true, stdio: 'ignore' });
+        send('  ✓ Desktop shortcut created');
+      } catch { send('  ✗ Desktop shortcut failed'); }
+    }
+
+    if (startMenuShortcut) {
+      try {
+        const smPath = path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', APP_NAME);
+        if (!fs.existsSync(smPath)) fs.mkdirSync(smPath, { recursive: true });
+        const smLnk = path.join(smPath, `${APP_NAME}.lnk`);
+        execSync(`powershell -Command "$ws=New-Object -ComObject WScript.Shell;$s=$ws.CreateShortcut('${smLnk.replace(/'/g, "''")}');$s.TargetPath='${exePath.replace(/'/g, "''")}';$s.Arguments='${shortcutArgs}';$s.WorkingDirectory='${shortcutWorkDir}';$s.Save()"`, { timeout: 10000, shell: true, stdio: 'ignore' });
+        send('  ✓ Start Menu shortcut created');
+      } catch { send('  ✗ Start Menu shortcut failed'); }
+    }
+
+    send('Writing registry entries...');
+    try {
+      const uninstallKey = `HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_NAME.replace(/\s/g, '')}`;
+      execSync(`reg add "${uninstallKey}" /v "DisplayName" /t REG_SZ /d "${APP_NAME}" /f`, { timeout: 5000, stdio: 'ignore' });
+      execSync(`reg add "${uninstallKey}" /v "DisplayVersion" /t REG_SZ /d "${pkgVer}" /f`, { timeout: 5000, stdio: 'ignore' });
+      execSync(`reg add "${uninstallKey}" /v "Publisher" /t REG_SZ /d "String Client" /f`, { timeout: 5000, stdio: 'ignore' });
+      execSync(`reg add "${uninstallKey}" /v "InstallLocation" /t REG_SZ /d "${targetDir.replace(/\//g, '\\')}" /f`, { timeout: 5000, stdio: 'ignore' });
+      execSync(`reg add "${uninstallKey}" /v "DisplayIcon" /t REG_SZ /d "${exePath}" /f`, { timeout: 5000, stdio: 'ignore' });
+      execSync(`reg add "${uninstallKey}" /v "UninstallString" /t REG_SZ /d "${exePath}" /f`, { timeout: 5000, stdio: 'ignore' });
+    } catch {}
+
+    send('Finalizing installation...');
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(INSTALL_MARKER, JSON.stringify({ installedAt: new Date().toISOString(), path: targetDir, version: pkgVer }));
+
+    send('✓ Installation complete!');
+    return { success: true };
+  } catch (e) {
+    send(`✗ Error: ${e.message}`);
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('install:launch', async (_, installPath) => {
+  try {
+    const targetDir = installPath || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', APP_NAME);
+    // Try node_modules/electron (from npm install) first — works in both dev and packaged
+    let exePath = path.join(targetDir, 'node_modules', 'electron', 'dist', 'electron.exe');
+    if (fs.existsSync(exePath)) {
+      spawn(exePath, [targetDir], { detached: true, stdio: 'ignore' });
+      app.exit(0);
+    }
+    // Fallback: use the exe copied by copyRecursive (packaged mode without npm electron)
+    exePath = path.join(targetDir, path.basename(app.getPath('exe')));
+    if (fs.existsSync(exePath)) {
+      spawn(exePath, [], { detached: true, stdio: 'ignore' });
+      app.exit(0);
+    }
+  } catch {}
 });

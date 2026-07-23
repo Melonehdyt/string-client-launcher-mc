@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { SkinViewer } from 'skinview3d'
 import logo from './assets/logo.png'
+import InstallerWizard from './installer/InstallerWizard'
 
 const API = 'https://stringclient.com'
 const WS = 'wss://stringclient.com'
@@ -176,6 +177,65 @@ const isEmbedIframe = (u: string) => { try { return /youtube|youtu\.be|vimeo/i.t
 const muteEmbedUrl = (url: string) => url.replace(/mute[d]?=0/, m => m.replace('0', '1'))
 
 export default function App() {
+  const [needsInstall, setNeedsInstall] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    // Check localStorage first (sync), then IPC marker file (async)
+    const ls = (() => { try { return localStorage.getItem('sc_installed') !== 'true' } catch { return true } })()
+    const api = (window as any).electronAPI
+    if (api?.checkInstalled) {
+      api.checkInstalled().then((installed: boolean) => {
+        setNeedsInstall(!installed)
+        // If installed, try to restore saved session (Lunar-style account.json)
+        if (installed && api?.checkSession) {
+          api.checkSession().then(session => {
+            if (session?.username && session?.uuid) {
+              setUsername(session.username)
+              setUuid(session.uuid)
+              if (session.accessToken) setMcToken(session.accessToken)
+              setSkinUrl(`https://mineskin.eu/skin/${session.username}`)
+              fetchMojangCape(session.uuid).then(url => { if (url) setCapeUrl(url) })
+              fetch(`${API}/api/auth/register`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: session.username, uuid: session.uuid })
+              }).then(r => r.json()).then(data => {
+                setPlayerId(data.playerId)
+                setRole(data.role || '')
+                setLoggedIn(true)
+                // Save to accounts list
+                const acc = { u: session.username, id: data.playerId, uuid: session.uuid, token: session.accessToken || '', skin: `https://mineskin.eu/skin/${session.username}` }
+                setAccounts(prev => {
+                  const filtered = prev.filter(x => x.u !== acc.u)
+                  const next = [...filtered, acc]
+                  localStorage.setItem('sc_accounts', JSON.stringify(next))
+                  if (api?.saveAccounts) api.saveAccounts(next)
+                  return next
+                })
+              }).catch(() => setLoggedIn(true))
+            }
+          }).catch(() => {})
+        }
+      }).catch(() => setNeedsInstall(ls))
+    } else {
+      setNeedsInstall(ls)
+      // Non-Electron: try to restore from localStorage
+      const saved = (() => { try { const s = JSON.parse(localStorage.getItem('sc') || '{}'); return s } catch { return {} } })()
+      if (saved?.username && saved?.uuid) {
+        setUsername(saved.username)
+        setPlayerId(saved.playerId || saved.uuid)
+        setUuid(saved.uuid)
+        setSkinUrl(`https://mineskin.eu/skin/${saved.username}`)
+        setMcToken(localStorage.getItem('sc_mc_token') || '')
+        setLoggedIn(true)
+      }
+    }
+  }, [])
+
+  const completeInstall = () => {
+    localStorage.setItem('sc_installed', 'true')
+    setNeedsInstall(false)
+  }
+
   const [tab, setTab] = useState<Tab>('home')
   const [loggedIn, setLoggedIn] = useState(false)
   const [username, setUsername] = useState('')
@@ -296,17 +356,30 @@ export default function App() {
   }, [loggedIn, username, playerId])
   useEffect(() => { notificationsEnabledRef.current = privacy.notifications }, [privacy.notifications])
 
-  // Fetch initial friends (filter out self on server side already, but double-check)
+  // Auto-refresh friends + role every 10 seconds
   useEffect(() => {
     if (!loggedIn || !playerId) return
-    fetch(`${API}/api/friends?playerId=${playerId}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setFriends(d.filter((f: any) => f.id !== playerId)) }).catch(() => {})
+    const refresh = () => {
+      fetch(`${API}/api/friends?playerId=${playerId}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setFriends(d.filter((f: any) => f.id !== playerId)) }).catch(() => {})
+      fetch(`${API}/api/user/profile?playerId=${playerId}`).then(r => r.json()).then(d => { if (d.role !== undefined) setRole(d.role) }).catch(() => {})
+    }
+    refresh()
+    const interval = setInterval(refresh, 10000)
+    return () => clearInterval(interval)
   }, [loggedIn, playerId])
 
-  // Fetch server list from API (merges with local defaults)
+  // Fetch server list from API (only sets if user has no custom servers)
   useEffect(() => {
-    fetch(`${API}/api/launcher/servers`).then(r => r.json()).then(list => {
-      if (Array.isArray(list) && list.length) setServers(list)
-    }).catch(() => {})
+    const fetchServers = () => {
+      fetch(`${API}/api/launcher/servers`).then(r => r.json()).then(list => {
+        if (Array.isArray(list) && list.length) {
+          setServers(prev => prev.length > 0 ? prev : list)
+        }
+      }).catch(() => {})
+    }
+    fetchServers()
+    const interval = setInterval(fetchServers, 60000)
+    return () => clearInterval(interval)
   }, [])
 
   // Discord Rich Presence
@@ -517,6 +590,9 @@ export default function App() {
     }
   }, [bgPlaying, bgUrl])
 
+  if (needsInstall === null) return null
+  if (needsInstall) return <InstallerWizard onComplete={completeInstall} />
+
   if (!loggedIn) {
     return (
       <div className="root">
@@ -675,6 +751,7 @@ export default function App() {
                 role={role}
                 onDeleteMsg={sendDelete}
                 chatLocked={chatLocked}
+                friends={friends}
               />
             )}
             {tab === 'friends' && (
@@ -786,7 +863,11 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
       }).catch(() => {})
   }
 
-  useEffect(() => { fetchNews()   }, [])
+  useEffect(() => {
+    fetchNews()
+    const interval = setInterval(fetchNews, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className="home-grid">
@@ -891,8 +972,9 @@ function HomeTab({ username, selectedVer, servers, launching, launchPid, onLaunc
             return (
             <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 6, marginBottom: 2, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
               <img src={`https://mineskin.eu/helm/${f.uuid}/8.png`} style={{ width: 18, height: 18, borderRadius: 4, imageRendering: 'pixelated', flexShrink: 0 }} />
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'rgba(74,222,128,0.7)' : 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? '#4ade80' : 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
               <span style={{ flex: 1 }}>{f.name}</span>
+              <span style={{ fontSize: 9, color: onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.15)' }}>{onlineList.some((o: any) => (o.id === f.id || o.name === f.name)) ? 'Online' : 'Offline'}</span>
               {f.role && <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 4px', borderRadius: 3, color: roleC, background: roleC + '22', border: '1px solid ' + roleC + '44' }}>{f.role}</span>}
               <button className="topbar-icon" style={{ width: 20, height: 20, opacity: 0.35 }} onClick={() => { onStartPrivateChat(f.id); setActiveTab('chat') }} title="Private chat">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1475,11 +1557,12 @@ function ModrinthTab({ instances }: { instances: any[] }) {
 }
 
 /* ── Chat ── */
-function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSendPrivate, partner, playerId, onClosePrivate, role, onDeleteMsg, chatLocked }: {
+function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSendPrivate, partner, playerId, onClosePrivate, role, onDeleteMsg, chatLocked, friends }: {
   chatMsgs: any[]; onSend: (t: string) => void; onlineList: any[]; username: string
   privateChatMsgs: any[]; onSendPrivate: (to: string, t: string) => void
   partner: string | null; playerId: string; onClosePrivate: () => void
   role: string; onDeleteMsg: (id: string) => void; chatLocked: boolean
+  friends: any[]
 }) {
   const [input, setInput] = useState('')
   const [privInput, setPrivInput] = useState('')
@@ -1500,11 +1583,13 @@ function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSe
     return <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '1px 5px', borderRadius: 3, marginLeft: 5, marginRight: 7, background: c + '22', color: c, border: '1px solid ' + c + '44' }}>{r}</span>
   }
 
+  const partnerName = partner ? (friends.find((f: any) => f.id === partner)?.name || onlineList.find((o: any) => (o.id || o) === partner)?.name || partner) : ''
+
   return (
     <div className="chat-tab">
       <div className="panel chat-main">
         <div className="chat-head">
-          <h3>{partner ? `Private: ${onlineNames.find((n: string) => n === '') || 'Chat'}` : 'Global Chat'}{!partner && chatLocked && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171' }}>🔒 Locked</span>}</h3>
+          <h3>{partner ? `Private: ${partnerName}` : 'Global Chat'}{!partner && chatLocked && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171' }}>🔒 Locked</span>}</h3>
           <span className="chat-online">● {onlineList.length} online</span>
           {partner && <button className="chat-send" style={{ marginLeft: 'auto', fontSize: 10 }} onClick={onClosePrivate}>Back to global</button>}
         </div>
@@ -1513,7 +1598,7 @@ function ChatTab({ chatMsgs, onSend, onlineList, username, privateChatMsgs, onSe
           {(partner ? privMsgs : chatMsgs).map((m, i) => (
             <div key={m.id || i} className={`chat-msg ${m.type === 'system' ? 'chat-system' : ''} ${m.fromId === playerId || m.sent ? 'chat-self' : ''}`}>
               {m.time && <span className="chat-time">{m.time}</span>}
-              {m.username && !m.sent && <><span className="chat-who">{m.username}</span>{m.role ? roleBadge(m.role) : ''}</>}
+              {!m.sent && <><span className="chat-who">{m.username || m.from || ''}</span>{m.role ? roleBadge(m.role) : ''}</>}
               {m.sent && <span className="chat-who" style={{ color: 'rgba(255,255,255,0.2)' }}>you</span>}
               <span className="chat-body">{m.text}</span>
               {isStaff && m.id && <span className="chat-del" onClick={() => onDeleteMsg(m.id)}>✕</span>}
@@ -1572,6 +1657,13 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
   }
 
   useEffect(() => { loadRequests() }, [playerId])
+
+  // Auto-refresh friend requests every 5 seconds
+  useEffect(() => {
+    if (!playerId) return
+    const interval = setInterval(loadRequests, 5000)
+    return () => clearInterval(interval)
+  }, [playerId])
 
   const searchPlayers = async (q: string) => {
     setSearchQ(q)
@@ -1733,6 +1825,9 @@ function FriendsTab({ username, playerId, friends, setFriends, onStartPrivateCha
                   <div className="friend-act">{f.activity || 'Offline'}</div>
                 </div>
                 <div className={`friend-dot ${f.online ? 'on' : 'off'}`} />
+                <button className="topbar-icon" style={{ width: 22, height: 22, opacity: 0.35 }} onClick={e => { e.stopPropagation(); openChat(f) }} title="Private chat">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </button>
                 <button className="topbar-icon" style={{ width: 26, height: 26, opacity: 0.4 }} onClick={e => { e.stopPropagation(); removeFriend(f.id) }} title="Remove">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -1951,23 +2046,36 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     setSkinStatus(`Previewing ${q}'s skin`)
   }
 
-  const applyPreviewSkin = () => {
+  const applyPreviewSkin = async () => {
     if (!previewSkinUrl || !mcToken) return
     setSkinUploading(true)
-    setSkinStatus('Applying...')
-    _mcFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
-      method: 'POST', json: true,
-      body: JSON.stringify({ variant: skinVariant, url: previewSkinUrl }),
-    }).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json()
-    }).then(() => {
+    setSkinStatus('Downloading skin...')
+    try {
+      const res = await fetch(previewSkinUrl)
+      if (!res.ok) throw new Error(`Failed to fetch skin (HTTP ${res.status})`)
+      const blob = await res.blob()
+      const file = new File([blob], 'skin.png', { type: 'image/png' })
+      const fd = new FormData()
+      fd.append('variant', skinVariant)
+      fd.append('file', file)
+      setSkinStatus('Uploading to Minecraft...')
+      const r = await _mcFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+        method: 'PUT',
+        body: fd,
+      })
+      if (!r.ok) throw new Error(`Minecraft API rejected (HTTP ${r.status})`)
+      const data = await r.json()
       setSkinUrl(previewSkinUrl)
       setSkinStatus('Skin applied!')
       setPreviewSkinUrl('')
       setSearchQuery('')
+      // Refresh skin in viewer by reloading saved skins
+      setTimeout(() => { try { const d = localStorage.getItem('sc_saved_skins'); if (d) setSavedSkins(JSON.parse(d)) } catch {} }, 500)
       setTimeout(() => { setSkinStatus(''); setSkinUploading(false) }, 3000)
-    }).catch(e => { setSkinStatus(`Error: ${e.message}`); setSkinUploading(false) })
+    } catch (e: any) {
+      setSkinStatus(`Error: ${e.message}`)
+      setSkinUploading(false)
+    }
   }
 
   const clearPreview = () => { setPreviewSkinUrl(''); setSkinStatus('') }
@@ -1981,7 +2089,7 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
     fd.append('variant', skinVariant)
     fd.append('file', file)
     _mcFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
-      method: 'POST',
+      method: 'PUT',
       body: fd,
     }).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)

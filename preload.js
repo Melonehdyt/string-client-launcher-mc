@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Auth
   login: () => ipcRenderer.invoke('auth:login'),
+  checkSession: () => ipcRenderer.invoke('auth:check'),
   refreshToken: () => ipcRenderer.invoke('auth:refresh'),
   launchMinecraft: (o) => ipcRenderer.invoke('launch-minecraft', o),
   killMinecraft: () => ipcRenderer.invoke('kill-minecraft'),
@@ -41,4 +42,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   discordStart: (activity) => ipcRenderer.invoke('discord:start', activity),
   discordUpdate: (activity) => ipcRenderer.invoke('discord:update', activity),
   discordStop: () => ipcRenderer.invoke('discord:stop'),
+
+  // Installer
+  checkInstalled: () => ipcRenderer.invoke('install:check'),
+  getDefaultInstallPath: () => ipcRenderer.invoke('install:get-default-path'),
+  selectInstallPath: () => ipcRenderer.invoke('install:select-path'),
+  installApp: (opts) => ipcRenderer.invoke('install:run', opts),
+  launchInstalled: (installPath) => ipcRenderer.invoke('install:launch', installPath),
+  onInstallLog: (cb) => { ipcRenderer.on('install:log', (_, m) => cb(m)) },
 });

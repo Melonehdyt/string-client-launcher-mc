@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'crypto'
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, createReadStream } from 'fs'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join, extname } from 'path'
@@ -137,6 +137,14 @@ function body(req) {
     let data = ''
     req.on('data', c => data += c)
     req.on('end', () => { try { resolve(JSON.parse(data)) } catch { resolve({}) } })
+  })
+}
+
+function rawBody(req) {
+  return new Promise(resolve => {
+    const chunks = []
+    req.on('data', c => chunks.push(c))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
   })
 }
 
@@ -374,6 +382,18 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/launcher/moderation/profanity' && req.method === 'POST') {
     return json(res, 200, { flagged: false, categories: [] })
   }
+  if (req.method === 'GET' && pathname === '/api/launcher/download') {
+    const zipPath = join(__dirname, 'launcher-build', 'latest.zip')
+    if (!existsSync(zipPath)) { json(res, 404, { error: 'No build available' }); return }
+    const stat = statSync(zipPath)
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': 'attachment; filename="String-Client-Launcher.zip"',
+      'Content-Length': stat.size,
+    })
+    createReadStream(zipPath).pipe(res)
+    return
+  }
   if (pathname === '/api/index/cosmetics') {
     return json(res, 200, loadCosmeticsDef())
   }
@@ -507,6 +527,17 @@ const server = createServer(async (req, res) => {
     const token = makeToken()
     adminTokens.set(token, { type: 'password', discordId: '' })
     return json(res, 200, { token })
+  }
+
+  // ── Admin: Launcher build upload ──
+  if (req.method === 'POST' && pathname === '/api/admin/launcher/upload') {
+    const token = req.headers['x-admin-token']
+    if (!token || token !== BOT_TOKEN) return json(res, 401, { error: 'invalid token' })
+    const buf = await rawBody(req)
+    const buildDir = join(__dirname, 'launcher-build')
+    if (!existsSync(buildDir)) mkdirSync(buildDir, { recursive: true })
+    writeFileSync(join(buildDir, 'latest.zip'), buf)
+    return json(res, 200, { ok: true })
   }
 
   // ── Admin: Banners ──

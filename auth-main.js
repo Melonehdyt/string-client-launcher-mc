@@ -239,12 +239,16 @@ async function loginWithMicrosoft() {
   if (!owns) throw new Error('Account does not own Minecraft: Java Edition');
 
   const profile = await getProfile(mcToken);
-  // Persist session for silent refresh
+  // Persist session for silent refresh (like Lunar's account.json)
   const sessionDir = path.join(app.getPath('userData'), 'sessions');
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
   fs.writeFileSync(path.join(sessionDir, 'last.json'), JSON.stringify({
-    refreshToken, deviceToken, jwk, keyPair: { privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }) },
+    refreshToken, deviceToken, jwk,
+    keyPair: { privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }) },
     cv, issueInstant, sessionId,
+    // Save profile info so we can restore without re-login
+    username: profile.username,
+    uuid: profile.uuid,
   }));
   return { ...profile, accessToken: mcToken, refreshToken };
 }
@@ -302,4 +306,14 @@ async function refreshMinecraftToken() {
   return { accessToken: mcToken };
 }
 
-module.exports = { loginWithMicrosoft, refreshMinecraftToken };
+async function checkSavedSession() {
+  try {
+    const sessionPath = path.join(app.getPath('userData'), 'sessions', 'last.json');
+    if (!fs.existsSync(sessionPath)) return null;
+    const d = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    if (!d.refreshToken || !d.username) return null;
+    return { username: d.username, uuid: d.uuid };
+  } catch { return null }
+}
+
+module.exports = { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession };

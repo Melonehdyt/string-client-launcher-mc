@@ -41,47 +41,62 @@ function createBMP(width, height, drawPixel) {
   return buf
 }
 
-function drawSidebar(x, y, w, h) {
-  const t = y / h
-  const bg = lerpColor('#0d0d1a', '#1a1a3e', t)
-  const accent = x < 3 ? '#6366f1' : bg
-  return { b: parseInt(accent.slice(5,7),16), g: parseInt(accent.slice(3,5),16), r: parseInt(accent.slice(1,3),16) }
-}
-
-function drawHeader(x, y, w, h) {
-  const bg = '#0d0d1a'
-  return { b: parseInt(bg.slice(5,7),16), g: parseInt(bg.slice(3,5),16), r: parseInt(bg.slice(1,3),16) }
-}
-
-function lerpColor(a, b, t) {
-  const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16)
-  const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16)
-  const r = Math.round(ar + (br - ar) * t)
-  const g = Math.round(ag + (bg - ag) * t)
-  const b2 = Math.round(ab + (bb - ab) * t)
-  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b2.toString(16).padStart(2,'0')}`
-}
-
-// Generate sidebar BMP (164x314) — Welcome/Finish page
+// ── Sidebar bitmap (164x314) — Welcome/Finish page ──
 const sidebar = createBMP(164, 314, (x, y, w, h) => {
   const t = y / h
-  // Dark gradient #0d0d1a → #1a1a3e
-  const r = Math.round(13 + (26 - 13) * t)
-  const g = Math.round(13 + (26 - 13) * t)
-  const b = Math.round(26 + (62 - 26) * t)
-  // Accent line on left edge
-  if (x < 3) return { b: 241, g: 102, r: 99 }
+  // Deep dark gradient #0a0a14 → #16163a
+  let r = Math.round(10 + (22 - 10) * Math.pow(t, 0.7))
+  let g = Math.round(10 + (22 - 10) * Math.pow(t, 0.7))
+  let b = Math.round(20 + (58 - 20) * Math.pow(t, 0.7))
+
+  // Accent stripe on left edge (#6366f1)
+  if (x < 4) {
+    const fade = 1 - (x / 4)
+    r = Math.round(r + (99 - r) * fade * 0.7)
+    g = Math.round(g + (102 - g) * fade * 0.7)
+    b = Math.round(b + (241 - b) * fade * 0.7)
+  }
+
+  // Subtle diagonal lines pattern at the bottom
+  const distFromBottom = h - y
+  if (distFromBottom < 80) {
+    const phase = (x + y) % 12
+    if (phase < 1) {
+      r = Math.min(255, r + 15)
+      g = Math.min(255, g + 15)
+      b = Math.min(255, b + 30)
+    }
+  }
+
+  // Vignette: slightly darker at edges
+  const edgeX = Math.min(x, w - x) / w
+  const edgeY = Math.min(y, h - y) / h
+  const vignette = 1 - (1 - Math.min(edgeX, edgeY)) * 0.15
+  r = Math.round(r * vignette)
+  g = Math.round(g * vignette)
+  b = Math.round(b * vignette)
+
   return { b, g, r }
 })
 fs.writeFileSync(path.join(OUT_DIR, 'installerSidebar.bmp'), sidebar)
 console.log('✓ installerSidebar.bmp (164x314)')
 
-// Generate header BMP (150x57) — top of installer pages
+// ── Header bitmap (150x57) — shown at top of directory/instfiles pages ──
 const header = createBMP(150, 57, (x, y, w, h) => {
-  return { b: 26, g: 13, r: 13 }
+  // Dark gradient #0e0e1a → #12122a
+  const t = y / h
+  const g = Math.round(14 + (18 - 14) * t)
+  const b = Math.round(26 + (42 - 26) * t)
+  return { b, g: g, r: 14 }
 })
 fs.writeFileSync(path.join(OUT_DIR, 'installerHeader.bmp'), header)
 console.log('✓ installerHeader.bmp (150x57)')
 
-// Generate welcome banner (164x314 version for installer)
-console.log('✓ Done — installer assets ready')
+// ── Small icon bar bitmap (bottom of installer) ──
+const iconBar = createBMP(164, 30, (x, y, w, h) => {
+  return { b: 14, g: 10, r: 10 }
+})
+fs.writeFileSync(path.join(OUT_DIR, 'installerIconBar.bmp'), iconBar)
+console.log('✓ installerIconBar.bmp (164x30)')
+
+console.log('✓ All installer assets generated')
