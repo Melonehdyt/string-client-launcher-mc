@@ -268,7 +268,7 @@ function loadRefreshSession() {
     }
   } catch {}
 }
-loadRefreshSession();
+
 
 async function refreshMinecraftToken() {
   if (!_refreshSession) throw new Error('No refresh session available');
@@ -316,4 +316,4 @@ async function checkSavedSession() {
   } catch { return null }
 }
 
-module.exports = { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession };
+module.exports = { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession, loadRefreshSession };

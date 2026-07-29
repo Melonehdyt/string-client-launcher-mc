@@ -1,0 +1,54 @@
+{
+  "name": "string-client-installer",
+  "version": "1.0.0",
+  "description": "String Client Installer",
+  "author": "String Client",
+  "main": "electron.js",
+  "scripts": {
+    "build": "vite build",
+    "electron:build": "vite build && electron-builder --win portable",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.stringclient.installer",
+    "productName": "String Client Setup",
+    "copyright": "Copyright © 2026 String Client",
+    "asar": false,
+    "files": [
+      "electron.js",
+      "installer-preload.js",
+      "dist-installer/**/*",
+      "icon.ico"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.ico",
+      "publisherName": "String Client",
+      "legalTrademarks": "String Client",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

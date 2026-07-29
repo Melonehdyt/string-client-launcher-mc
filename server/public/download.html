@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download - String Client</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #fff; background: #0a0a0f;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; padding: 40px;
+    }
+    .bg {
+      position: fixed; inset: 0; z-index: 0; overflow: hidden;
+    }
+    .bg video {
+      width: 100%; height: 100%; object-fit: cover;
+      filter: grayscale(100%) contrast(1.15) brightness(0.35);
+    }
+    .overlay {
+      position: fixed; inset: 0; z-index: 1;
+      background: rgba(10,10,15,0.55);
+      backdrop-filter: blur(4px);
+    }
+    .content { position: relative; z-index: 2; max-width: 440px; width: 100%; }
+    .logo-wrap {
+      width: 72px; height: 72px; border-radius: 18px; margin: 0 auto 20px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .logo-wrap img { width: 48px; height: 48px; object-fit: contain; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.02em; }
+    .subtitle { font-size: 13px; color: rgba(255,255,255,0.35); margin-bottom: 28px; }
+    .box {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 32px; backdrop-filter: blur(12px);
+    }
+    .version-info {
+      font-size: 12px; color: rgba(255,255,255,0.3); margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 36px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+      text-decoration: none; transition: all 0.2s; font-family: inherit;
+    }
+    .btn-primary {
+      background: #4ade80; color: #0a0a0f;
+    }
+    .btn-primary:hover { background: #22c55e; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .links { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+    .footer {
+      position: fixed; bottom: 16px; left: 0; right: 0; z-index: 2;
+      text-align: center; font-size: 11px; color: rgba(255,255,255,0.15);
+    }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,0.15); border-top-color: #0a0a0f;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #f87171; font-size: 12px; margin-top: 10px; }
+    .pw-group { margin-bottom: 16px; }
+    .pw-group input {
+      width: 100%; padding: 11px 16px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+      color: #fff; font-size: 14px; outline: none; text-align: center;
+      font-family: inherit; transition: border-color 0.2s;
+    }
+    .pw-group input:focus { border-color: rgba(255,255,255,0.3); }
+    .pw-group input::placeholder { color: rgba(255,255,255,0.2); }
+    .hidden { display: none !important; }
+    .file-info {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 12px; color: rgba(255,255,255,0.25); margin-bottom: 16px;
+    }
+    .file-info .dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.15); }
+    .no-file { color: rgba(255,255,255,0.25); font-size: 13px; padding: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <video autoplay muted loop playsinline>
+      <source src="https://stringclient.com/media/launcherbackground.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="content">
+    <div class="logo-wrap">
+      <img src="/logo.png" alt="String Client">
+    </div>
+    <h1>Download String Client</h1>
+    <p class="subtitle">Minecraft Launcher &mdash; Windows x64</p>
+
+    <!-- Password gate (shown if password is required) -->
+    <div class="box" id="pw-box">
+      <div class="pw-group">
+        <input type="password" id="pw-input" placeholder="Enter download password" autocomplete="off" />
+      </div>
+      <button class="btn btn-primary" style="width:100%" id="pw-btn" onclick="verifyPassword()">
+        Continue
+      </button>
+      <div class="error hidden" id="pw-error"></div>
+    </div>
+
+    <!-- Download box (shown after password verified or no password needed) -->
+    <div class="box hidden" id="dl-box">
+      <div id="dl-content">
+        <div class="version-info">Checking availability...</div>
+      </div>
+      <a class="btn btn-primary hidden" id="dl-btn" style="width:100%">
+        Download
+      </a>
+      <div id="smartscreen-note" class="hidden" style="margin-top:14px; padding:12px 14px; border-radius:8px; background:rgba(255,200,60,0.08); border:1px solid rgba(255,200,60,0.15); font-size:11.5px; line-height:1.7; color:rgba(255,255,255,0.5);">
+        <strong style="color:rgba(255,200,60,0.8);">Windows SmartScreen warning?</strong><br>
+        Click <strong>"More info"</strong> → <strong>"Run anyway"</strong> to proceed. This app is safe — SmartScreen flags it because it's not digitally signed.
+      </div>
+    </div>
+
+    <div class="links">
+      <a href="/" class="btn btn-secondary" style="font-size:12px; padding:8px 20px;">Back to Home</a>
+    </div>
+  </div>
+
+  <div class="footer">String Client &copy; 2026</div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    async function verifyPassword() {
+      const pw = $('pw-input').value;
+      const errEl = $('pw-error');
+      const btn = $('pw-btn');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      errEl.classList.add('hidden');
+
+      try {
+        const r = await fetch('/api/launcher/download/verify-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw }),
+        });
+        const d = await r.json();
+
+        if (d.ok || d.noPassword) {
+          if (d.token) sessionStorage.setItem('dl_token', d.token);
+          $('pw-box').classList.add('hidden');
+          $('dl-box').classList.remove('hidden');
+          loadDownloadInfo();
+        } else {
+          errEl.textContent = 'Incorrect password';
+          errEl.classList.remove('hidden');
+          $('pw-input').value = '';
+          $('pw-input').focus();
+        }
+      } catch (e) {
+        errEl.textContent = 'Connection error — try again';
+        errEl.classList.remove('hidden');
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = 'Continue';
+    }
+
+    async function loadDownloadInfo() {
+      const content = $('dl-content');
+      const btn = $('dl-btn');
+
+      try {
+        const r = await fetch('/api/launcher/build-info');
+        const d = await r.json();
+
+        if (d.exe) {
+          const mb = (d.exe.size / 1024 / 1024).toFixed(1);
+          content.innerHTML =
+            '<div class="file-info">' +
+              '<span>String Client Setup</span>' +
+              '<span class="dot"></span>' +
+              '<span>' + mb + ' MB</span>' +
+            '</div>';
+
+          const token = sessionStorage.getItem('dl_token');
+          btn.href = '/api/launcher/download/exe' + (token ? '?token=' + token : '');
+          btn.innerHTML = 'Download Setup';
+          btn.classList.remove('hidden');
+          btn.disabled = false;
+        } else {
+          content.innerHTML = '<div class="no-file">No download available yet</div>';
+        }
+      } catch (e) {
+        content.innerHTML = '<div class="no-file">Could not check availability</div>';
+      }
+    }
+
+    async function init() {
+      try {
+        // Check if build exists
+        const r = await fetch('/api/launcher/build-info');
+        const d = await r.json();
+
+        if (!d.exe) {
+          $('pw-box').innerHTML = '<div class="no-file">No download available yet</div>';
+          return;
+        }
+
+        // Check if password is required
+        const p = await fetch('/api/launcher/download/verify-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: '' }),
+        });
+        const pdata = await p.json();
+
+        if (pdata.noPassword) {
+          // No password required — skip straight to download
+          $('pw-box').classList.add('hidden');
+          $('dl-box').classList.remove('hidden');
+          loadDownloadInfo();
+        }
+        // Otherwise password box stays visible
+      } catch {}
+    }
+
+    // Enter key submits password
+    $('pw-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') verifyPassword();
+    });
+
+    init();
+  </script>
+</body>
+</html>

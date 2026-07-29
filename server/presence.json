@@ -1,0 +1,858 @@
+{
+  "1324722473417314357": {
+    "discord_user": {
+      "id": "1324722473417314357",
+      "username": "bmwduck",
+      "global_name": "BMWDuck",
+      "discriminator": "0",
+      "avatar": "a89ef7d658711f3c064758089779a6e2",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "Stay real, stay rare.",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T15:28:49.428Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "1524140283359531178": {
+    "discord_user": {
+      "id": "1524140283359531178",
+      "username": "String Client",
+      "global_name": null,
+      "discriminator": "7528",
+      "avatar": "931975404e82c933cca3607d0fd707e4",
+      "public_flags": 0,
+      "bot": true
+    },
+    "discord_status": "online",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": true,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1467439221802270763": {
+    "discord_user": {
+      "id": "1467439221802270763",
+      "username": "_cid3r",
+      "global_name": "୭ ᵎᵎ cider",
+      "discriminator": "0",
+      "avatar": "d8d6d597326e9dd30f81420949731f46",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "idle",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "720351927581278219": {
+    "discord_user": {
+      "id": "720351927581278219",
+      "username": "Invite Tracker",
+      "global_name": null,
+      "discriminator": "0478",
+      "avatar": "7ac935300e9bc3edcbc2de1b91c597b1",
+      "public_flags": 0,
+      "bot": true
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "online",
+        "type": 4,
+        "state": "/help | invite-tracker.com",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:10:23.852Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": true,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "883409366458449920": {
+    "discord_user": {
+      "id": "883409366458449920",
+      "username": "1ntort",
+      "global_name": "tort",
+      "discriminator": "0",
+      "avatar": "9be6f4b2f3ee52d42ff226dc3938eece",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "idle",
+    "activities": [
+      {
+        "name": "Roblox",
+        "type": 0,
+        "state": "by DOODE GAMES",
+        "details": "DOODE's Glitch Per Difficulty Chart Obby",
+        "timestamps": {
+          "start": "2026-07-23T17:13:50.210Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://media.discordapp.net/external/x6L3rCTmxzs34RpmF8vueFenELgsF7FXsVg0A-Q1pU0/https/tr.rbxcdn.com/180DAY-1e93a774a8f6a93f1e2a5a5fc8422b02/128/128/Image/Png/noFilter",
+          "large_text": "DOODE's Glitch Per Difficulty Chart Obby",
+          "small_image": "https://media.discordapp.net/external/1GX_8GwBv8tv1NXdSybTGudzFbch7s5YnzLyW9W1ul8/https/tr.rbxcdn.com/30DAY-AvatarHeadshot-324E433DDC4DCD1128BDA29726E7C166-Png/180/180/AvatarHeadshot/Png/noFilter",
+          "small_text": "Playing on tort (@1NTORT)"
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:13:50.588Z",
+        "application_id": "1005469189907173486"
+      },
+      {
+        "name": "my keyboard",
+        "type": 2,
+        "state": "I'm either playing a game or coding,",
+        "details": "Hey, I'm tort",
+        "timestamps": {
+          "start": "2026-07-22T23:00:00.206Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://media.discordapp.net/external/hnHT6Kw6muvA0y0klO7Qr1vew5s5APK3gLL-2Zutud4/https/github.com/1ntort/random-images/raw/refs/heads/master/amber%2520dragon",
+          "large_text": "My current time:",
+          "small_image": "mp:null",
+          "small_text": null
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 1,
+        "created_at": "2026-07-23T15:00:51.511Z",
+        "application_id": "1140751509156548730"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1402587343076065305": {
+    "discord_user": {
+      "id": "1402587343076065305",
+      "username": "timmyvikeld",
+      "global_name": "KUNGTIMMY",
+      "discriminator": "0",
+      "avatar": "cdf11e3d30105aef3aee06a9fcb04cd6",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "urm.... Jag gillar matte",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": {
+          "id": null,
+          "name": "🤓",
+          "animated": null
+        },
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T16:29:27.659Z",
+        "application_id": null
+      },
+      {
+        "name": "Minecraft with Medal",
+        "type": 0,
+        "state": "with Medal",
+        "details": "Clipping Minecraft",
+        "timestamps": {
+          "start": "2026-07-23T16:27:11.866Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://media.discordapp.net/external/ZcNs_oy_EuthQYQl36NuAfkwqNrypmhmPckkqDJwBno/https/cdn.medal.tv/asset/games/minecraft/icon-1689192302783.jpg",
+          "large_text": "Minecraft",
+          "small_image": "https://cdn.discordapp.com/app-assets/307998818547531777/1407359251034280048.webp",
+          "small_text": "Medal"
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T16:27:13.797Z",
+        "application_id": "307998818547531777"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "1346207563871682580": {
+    "discord_user": {
+      "id": "1346207563871682580",
+      "username": "itz3lb0bb0",
+      "global_name": "ItzElbobbo",
+      "discriminator": "0",
+      "avatar": "c42cf41d24639d3fb26ae80eb189ac5b",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "IGN: ItzElbobbo",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": {
+          "id": null,
+          "name": "🎥",
+          "animated": null
+        },
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:06:53.515Z",
+        "application_id": null
+      },
+      {
+        "name": "Dawn",
+        "type": 0,
+        "state": "Main Menu [1.21.11]",
+        "details": "In the Overworld ",
+        "timestamps": {
+          "start": "2026-07-23T07:48:14.000Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://cdn.discordapp.com/app-assets/1516481640497418240/1516901723694829639.webp",
+          "large_text": "Dawn Client",
+          "small_image": "mp:null",
+          "small_text": null
+        },
+        "party": {},
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:06:53.515Z",
+        "application_id": "1516481640497418240"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "678344927997853742": {
+    "discord_user": {
+      "id": "678344927997853742",
+      "username": "Sapphire",
+      "global_name": null,
+      "discriminator": "8184",
+      "avatar": "37e0fb2dcf8d219aa92bf02f47ea60eb",
+      "public_flags": 0,
+      "bot": true
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "sapph.xyz",
+        "type": 4,
+        "state": "🔗 sapph.xyz",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:13:47.902Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": true,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1495669800280653896": {
+    "discord_user": {
+      "id": "1495669800280653896",
+      "username": "itsreal_discretionary",
+      "global_name": "_Discretionary",
+      "discriminator": "0",
+      "avatar": "03dd8175218bd4400c7abb0e708153f0",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Spotify",
+        "type": 2,
+        "state": "TRVXER",
+        "details": "PUMP TEKK - SUPER SLOWED",
+        "timestamps": {
+          "start": "2026-07-23T17:12:56.374Z",
+          "end": "2026-07-23T17:15:22.422Z"
+        },
+        "assets": {
+          "large_image": "https://i.scdn.co/image/ab67616d0000b27356a6a621f72d134bbca028e7",
+          "large_text": "PUMP TEKK",
+          "small_image": "mp:null",
+          "small_text": null
+        },
+        "party": {
+          "id": "spotify:1495669800280653896"
+        },
+        "emoji": null,
+        "sync_id": "727ma7kuOLuZvTQtpR5pnr",
+        "session_id": null,
+        "flags": 48,
+        "created_at": "2026-07-23T17:12:56.696Z",
+        "application_id": null
+      },
+      {
+        "name": "Lunar Client",
+        "type": 0,
+        "state": "On Minecraft 1.21.11",
+        "details": "Playing Private Server",
+        "timestamps": {
+          "start": "2026-07-23T16:51:54.807Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://cdn.discordapp.com/app-assets/671636579701358592/1515458565987500062.webp",
+          "large_text": "Lunar Client",
+          "small_image": "https://cdn.discordapp.com/app-assets/671636579701358592/1515464263614071007.webp",
+          "small_text": "Minecraft 1.21.11"
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T16:53:40.715Z",
+        "application_id": "671636579701358592"
+      }
+    ],
+    "spotify": {
+      "track_id": "727ma7kuOLuZvTQtpR5pnr",
+      "timestamps": {
+        "start": "2026-07-23T17:12:56.374Z",
+        "end": "2026-07-23T17:15:22.422Z"
+      },
+      "song": "PUMP TEKK - SUPER SLOWED",
+      "artist": "TRVXER",
+      "album_art_url": "https://i.scdn.co/image/ab67616d0000b27356a6a621f72d134bbca028e7",
+      "album": "PUMP TEKK"
+    },
+    "listening_to_spotify": true,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "1158866413210050701": {
+    "discord_user": {
+      "id": "1158866413210050701",
+      "username": "jaden_is_da_best",
+      "global_name": "JΛDΣП (VIΣƬПΛM) 🇻🇳",
+      "discriminator": "0",
+      "avatar": "3c2127a46636f6e23ed31777fb37607b",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "Plane Spotting",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": {
+          "id": null,
+          "name": "✈️",
+          "animated": null
+        },
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:13:13.466Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "594473239367909386": {
+    "discord_user": {
+      "id": "594473239367909386",
+      "username": "barkmore",
+      "global_name": "BarkMore",
+      "discriminator": "0",
+      "avatar": "82306389c1dd3c6b995670c5bae19ac7",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "155149108183695360": {
+    "discord_user": {
+      "id": "155149108183695360",
+      "username": "Dyno",
+      "global_name": null,
+      "discriminator": "3861",
+      "avatar": "b4fdfc64edff74c37e1574d34fad66c2",
+      "public_flags": 0,
+      "bot": true
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "dyno.gg | ?help",
+        "type": 0,
+        "state": null,
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-17T20:38:08.325Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": true,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1005938271177682954": {
+    "discord_user": {
+      "id": "1005938271177682954",
+      "username": "bananazoro",
+      "global_name": "4cko",
+      "discriminator": "0",
+      "avatar": "d47b51dd4b4a28180872af71737b8fad",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "473855854224080897": {
+    "discord_user": {
+      "id": "473855854224080897",
+      "username": "probablymanny_",
+      "global_name": "manny / biogonal",
+      "discriminator": "0",
+      "avatar": "efd128d33bdeec04184baf394d2abc68",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Spotify Podcasts",
+        "type": 2,
+        "state": "songs that they like",
+        "details": "Browsing through",
+        "timestamps": {
+          "start": "2026-07-23T05:35:27.000Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://media.discordapp.net/external/ANPIO--uIEDu3vBdabt0ZY2sGzdK3Nvt_W3GrZCNqrg/https/cdn.rcd.gg/PreMiD/websites/S/Spotify%2520Podcasts/assets/logo.png",
+          "large_text": null,
+          "small_image": "https://media.discordapp.net/external/CzTB_RRGPydVY83NiMfagMKT0nceEUrkUq0XZnTXQ8M/https/cdn.rcd.gg/PreMiD/resources/reading.png",
+          "small_text": "Browsing..."
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 192,
+        "created_at": "2026-07-23T16:17:32.503Z",
+        "application_id": "619561001234464789"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "718760263121108996": {
+    "discord_user": {
+      "id": "718760263121108996",
+      "username": "gilaxy04",
+      "global_name": "galaxy",
+      "discriminator": "0",
+      "avatar": "7940b79374dd0f3f7cde28414368c2ef",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "Admin & Dev at Olangus Studio",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": {
+          "id": null,
+          "name": "🖥️",
+          "animated": null
+        },
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:14:49.846Z",
+        "application_id": null
+      },
+      {
+        "name": "Upload Labs",
+        "type": 0,
+        "state": null,
+        "details": "Money: 119ad",
+        "timestamps": {
+          "start": "2026-07-21T23:40:33.000Z",
+          "end": null
+        },
+        "assets": {
+          "large_image": "https://cdn.discordapp.com/app-assets/1423800095375364138/1423800749414023370.webp",
+          "large_text": "Version 2.2.12",
+          "small_image": "https://cdn.discordapp.com/app-assets/1423800095375364138/1469360731035009297.webp",
+          "small_text": "Support Level 0"
+        },
+        "party": {},
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:14:49.846Z",
+        "application_id": "1423800095375364138"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1213526370496417834": {
+    "discord_user": {
+      "id": "1213526370496417834",
+      "username": "proslayerz_",
+      "global_name": "ProSlayerz",
+      "discriminator": "0",
+      "avatar": "ee38b12b266fc935f32e640e474ef76f",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "Deving Systems To Dev Systems..I Smell AI.",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-21T13:48:31.416Z",
+        "application_id": null
+      },
+      {
+        "name": "Modrinth",
+        "type": 0,
+        "state": "Idling...",
+        "details": null,
+        "timestamps": null,
+        "assets": {
+          "large_image": "https://cdn.discordapp.com/app-assets/1123683254248148992/1137523880718762015.webp",
+          "large_text": "Modrinth Logo",
+          "small_image": "mp:null",
+          "small_text": null
+        },
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T13:47:33.852Z",
+        "application_id": "1123683254248148992"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "488311217253908485": {
+    "discord_user": {
+      "id": "488311217253908485",
+      "username": "melonehd",
+      "global_name": "Melon",
+      "discriminator": "0",
+      "avatar": "e892daa9fd5d3e94c0276bcc4768fed9",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "???",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T11:09:19.987Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "1457703766265565409": {
+    "discord_user": {
+      "id": "1457703766265565409",
+      "username": "waterbucketss",
+      "global_name": "WaterBucket",
+      "discriminator": "0",
+      "avatar": "1ad292f45493378a76efee8868307625",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "dnd",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": "python developer",
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T16:48:38.396Z",
+        "application_id": null
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1359111190902477000": {
+    "discord_user": {
+      "id": "1359111190902477000",
+      "username": "dog1.dw",
+      "global_name": "dog1",
+      "discriminator": "0",
+      "avatar": "a4eb2a8109ab1c86143cd3e1ff85a3c0",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "idle",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": false,
+    "active_on_discord_mobile": false
+  },
+  "1229013668373725296": {
+    "discord_user": {
+      "id": "1229013668373725296",
+      "username": "kingl7789",
+      "global_name": "kingl7789",
+      "discriminator": "0",
+      "avatar": "792a7e89de52a27d9f62bfb31c614392",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "state": null,
+        "details": null,
+        "timestamps": null,
+        "assets": null,
+        "party": null,
+        "emoji": {
+          "id": null,
+          "name": "🥱",
+          "animated": null
+        },
+        "sync_id": null,
+        "session_id": null,
+        "flags": 0,
+        "created_at": "2026-07-23T17:09:35.556Z",
+        "application_id": null
+      },
+      {
+        "name": "Essential Mod",
+        "type": 0,
+        "state": "Playing on a server",
+        "details": "Playing Minecraft 1.21.11",
+        "timestamps": null,
+        "assets": {
+          "large_image": "https://cdn.discordapp.com/app-assets/894984875755597825/1245708130927640691.webp",
+          "large_text": null,
+          "small_image": "https://media.discordapp.net/external/RQAmd92fRL_pEwtEG5UYaYIywKlYEm8HF4bqQRYNdt8/https/crafthead.net/helm/00c131b07fe0394c2aead55bf19d8279954cde52691184405e767016a9bd53d5",
+          "small_text": "kingl7789"
+        },
+        "party": {
+          "size": [
+            1,
+            8
+          ],
+          "id": "eu.mcpvp.clube696337c-4a7b-4964-805e-512c017eaa50"
+        },
+        "emoji": null,
+        "sync_id": null,
+        "session_id": null,
+        "flags": 2,
+        "created_at": "2026-07-23T17:07:56.556Z",
+        "application_id": "894984875755597825"
+      }
+    ],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  },
+  "1137444352843583570": {
+    "discord_user": {
+      "id": "1137444352843583570",
+      "username": "defendi1",
+      "global_name": "Defendi1",
+      "discriminator": "0",
+      "avatar": "5327b2201277adcceee8b42f5729296c",
+      "public_flags": 0,
+      "bot": false
+    },
+    "discord_status": "online",
+    "activities": [],
+    "spotify": null,
+    "listening_to_spotify": false,
+    "kv": {},
+    "active_on_discord_web": false,
+    "active_on_discord_desktop": true,
+    "active_on_discord_mobile": false
+  }
+}

@@ -9,22 +9,25 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "electron:build:portable": "vite build && electron-builder --win portable --config.compression=store",
-    "electron:build:all": "vite build && electron-builder --win",
+    "electron:build:portable": "vite build && electron-builder --win portable -c.compression=store",
+    "electron:build:installer": "vite build && electron-builder --win nsis -c.compression=store",
+    "electron:build:all": "vite build && electron-builder --win -c.compression=store",
     "start": "electron .",
     "server": "node server/index.js",
     "server:dev": "node --watch server/index.js",
     "bot": "node server/discord-bot.js",
     "bot:dev": "node --watch server/discord-bot.js",
-    "build:zip": "powershell -NoProfile -Command \"if (Test-Path launcher-build.zip) { Remove-Item launcher-build.zip }; Compress-Archive -Path main.js,preload.js,auth-main.js,package.json,dist,buildResources -DestinationPath launcher-build.zip -Force\"",
-    "deploy:launcher": "powershell -NoProfile -Command \"$url='https://stringclient.com/api/admin/launcher/upload'; $zip=[System.IO.File]::ReadAllBytes('launcher-build.zip'); $wc=New-Object System.Net.WebClient; $wc.Headers.Add('Content-Type','application/zip'); $wc.Headers.Add('x-admin-token','$env:BOT_TOKEN'); $wc.UploadData($url,'POST',$zip)\""
+    "build:zip": "powershell -NoProfile -Command \"if (Test-Path launcher-build.zip) { Remove-Item launcher-build.zip }; Compress-Archive -Path main.js,preload.js,auth-main.js,package.json,dist,buildResources -DestinationPath launcher-build.zip -Force; $d='server\\launcher-build'; if (!(Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }; Copy-Item launcher-build.zip \"$d\\latest.zip\" -Force; Write-Host ('Created launcher-build.zip (' + (Get-Item launcher-build.zip).Length + ' bytes) and copied to server/launcher-build/latest.zip')\"",
+    "deploy:launcher": "powershell -NoProfile -Command \"$url=$env:LAUNCHER_UPLOAD_URL; if (-not $url){$url='http://localhost:3000/api/admin/launcher/upload'}; $zip=[System.IO.File]::ReadAllBytes('launcher-build.zip'); $wc=New-Object System.Net.WebClient; $wc.Headers.Add('Content-Type','application/zip'); $wc.Headers.Add('x-admin-token','$env:BOT_TOKEN'); $wc.UploadData($url,'POST',$zip)\"",
+    "build:installer": "cd installer && npm install && npx vite build && npx electron-builder --win portable && cd ..",
+    "build:installer:all": "cd installer && npm install && npx vite build && npx electron-builder --win && cd .."
   },
   "author": "String Client",
   "build": {
     "appId": "com.stringclient.launcher",
     "productName": "String Client",
-    "author": "String Client",
-    "copyright": "Copyright © 2025 String Client",
+    "copyright": "Copyright © 2026 String Client",
+    "asar": false,
     "files": [
       "main.js",
       "preload.js",
@@ -34,38 +37,49 @@
       "buildResources/icon-256.png"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "buildResources/icon.ico",
-      "signAndEditExecutable": false,
+      "legalTrademarks": "String Client",
       "publisherName": "String Client",
-      "companyName": "String Client"
+      "signAndEditExecutable": false
     },
     "nsis": {
-        "oneClick": false,
-        "perMachine": false,
-        "allowToChangeInstallationDirectory": true,
-        "installerIcon": "buildResources/icon.ico",
-        "uninstallerIcon": "buildResources/icon.ico",
-        "installerHeaderIcon": "buildResources/icon.ico",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "buildResources/icon.ico",
+      "uninstallerIcon": "buildResources/icon.ico",
+      "installerHeaderIcon": "buildResources/icon.ico",
       "installerSidebar": "buildResources/installerSidebar.bmp",
       "installerHeader": "buildResources/installerHeader.bmp",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "String Client",
       "unicode": true,
-      "installerLanguages": [
-        "en_US"
-      ],
-      "language": "1049",
       "include": "buildResources/installer.nsh",
       "runAfterFinish": false
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
     }
   },
   "dependencies": {
     "discord-rpc": "^4.0.1",
     "discord.js": "^14.27.0",
     "dotenv": "^16.4.0",
-    "electron": "^28.1.0",
     "jose": "^4.15.5",
     "minecraft-launcher-core": "^3.2.1",
     "sharp": "^0.35.3",
@@ -78,6 +92,7 @@
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
+    "electron": "^43.2.0",
     "electron-builder": "^24.9.1",
     "png-to-ico": "^3.0.2",
     "react": "^18.2.0",

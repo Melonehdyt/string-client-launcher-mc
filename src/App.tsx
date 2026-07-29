@@ -108,6 +108,7 @@ const THEMES = [
   { id: 'dark', label: 'Dark', color: '#1a1a2e' },
   { id: 'amoled', label: 'AMOLED', color: '#000000' },
   { id: 'mocha', label: 'Mocha', color: '#1e1e32' },
+  { id: 'custom', label: 'Custom', color: '#888' },
 ]
 
 function BgIframe({ src, preview, volume, playing }: { src: string; preview?: boolean; volume?: number; playing?: boolean }) {
@@ -265,6 +266,9 @@ export default function App() {
   const [launching, setLaunching] = useState(false)
   const [launchPid, setLaunchPid] = useState<number | null>(null)
   const [accounts, setAccounts] = useState<any[]>([])
+  const [logs, setLogs] = useState<string[]>([])
+  const [showTerminal, setShowTerminal] = useState(false)
+  const logsEndRef = useRef<HTMLDivElement>(null)
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [privacy, setPrivacy] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc_privacy') || '{"online":true,"friendRequests":true,"activity":true,"notifications":true,"discordPresence":true}') } catch { return { online: true, friendRequests: true, activity: true, notifications: true, discordPresence: true } }
@@ -277,6 +281,13 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [role, setRole] = useState(() => { try { const s = localStorage.getItem('sc'); if (s) { const d = JSON.parse(s); return d.role || '' } return '' } catch { return '' } })
   const [hasSubscription, setHasSubscription] = useState(() => { try { return localStorage.getItem('sc_subscribed') === 'true' } catch { return false } })
+  const [consoleColors, setConsoleColors] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sc_console_colors') || '{"text":"rgba(255,255,255,0.85)","error":"#ff6b6b","warn":"#ffd43b","info":"rgba(255,255,255,0.5)","crash":"#ff6b6b","oom":"#ffa94d","bg":"rgba(0,0,0,0.55)"}') } catch { return { text: 'rgba(255,255,255,0.85)', error: '#ff6b6b', warn: '#ffd43b', info: 'rgba(255,255,255,0.5)', crash: '#ff6b6b', oom: '#ffa94d', bg: 'rgba(0,0,0,0.55)' } }
+  })
+  const CONSOLE_DEFAULTS = { text: 'rgba(255,255,255,0.85)', error: '#ff6b6b', warn: '#ffd43b', info: 'rgba(255,255,255,0.5)', crash: '#ff6b6b', oom: '#ffa94d', bg: 'rgba(0,0,0,0.55)' }
+  const [themeConfig, setThemeConfig] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sc_theme_config') || '{}') } catch { return {} }
+  })
   const bgVideoRef = useRef<HTMLVideoElement>(null)
   const notificationsEnabledRef = useRef(privacy.notifications)
 
@@ -322,7 +333,9 @@ export default function App() {
   const save = useCallback(() => {
     localStorage.setItem('sc', JSON.stringify({ u: username, id: playerId, uuid, skin: skinUrl, cape: capeUrl, token: mcToken, theme, bg: bgUrl, overlay: bgOverlayColor, ram, jvm, mcPath, instances, servers, role }))
     localStorage.setItem('sc_privacy', JSON.stringify(privacy))
-  }, [username, playerId, uuid, skinUrl, capeUrl, mcToken, theme, bgUrl, bgOverlayColor, ram, jvm, mcPath, instances, servers, privacy])
+    localStorage.setItem('sc_console_colors', JSON.stringify(consoleColors))
+    localStorage.setItem('sc_theme_config', JSON.stringify(themeConfig))
+  }, [username, playerId, uuid, skinUrl, capeUrl, mcToken, theme, bgUrl, bgOverlayColor, ram, jvm, mcPath, instances, servers, privacy, consoleColors, themeConfig])
 
   useEffect(() => { save() }, [save])
   useEffect(() => { localStorage.setItem('sc_subscribed', hasSubscription ? 'true' : '') }, [hasSubscription])
@@ -355,6 +368,24 @@ export default function App() {
     } catch {}
   }, [loggedIn, username, playerId])
   useEffect(() => { notificationsEnabledRef.current = privacy.notifications }, [privacy.notifications])
+
+  // Minecraft log listeners
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api) return
+    const addLog = (msg: string) => setLogs(prev => [...prev.slice(-999), msg])
+    api.onMcLog((msg: string) => addLog(msg))
+    api.onMcData((msg: string) => addLog(msg))
+    api.onMcError((msg: string) => addLog(`[ERROR] ${msg}`))
+  }, [])
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
+  // Auto-show terminal on crash
+  useEffect(() => {
+    const crashLog = logs.find(l => /\[Launcher\] Exited with code (\d+)/.test(l) && !/code 0/.test(l))
+    if (crashLog) setShowTerminal(true)
+  }, [logs])
 
   // Auto-refresh friends + role every 10 seconds
   useEffect(() => {
@@ -532,6 +563,33 @@ export default function App() {
 
   // Apply theme
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
+  // Apply custom theme CSS vars
+  useEffect(() => {
+    const el = document.documentElement
+    if (theme === 'custom' && themeConfig.text) {
+      el.style.setProperty('--text-primary', themeConfig.text || 'rgba(255,255,255,0.85)')
+      el.style.setProperty('--text-secondary', themeConfig.secondary || 'rgba(255,255,255,0.7)')
+      el.style.setProperty('--text-tertiary', themeConfig.tertiary || 'rgba(255,255,255,0.5)')
+      el.style.setProperty('--text-muted', themeConfig.muted || 'rgba(255,255,255,0.3)')
+      el.style.setProperty('--text-dim', themeConfig.dim || 'rgba(255,255,255,0.2)')
+      el.style.setProperty('--text-faint', themeConfig.faint || 'rgba(255,255,255,0.12)')
+      el.style.setProperty('--border-subtle', themeConfig.borderSubtle || 'rgba(255,255,255,0.06)')
+      el.style.setProperty('--border-default', themeConfig.borderDefault || 'rgba(255,255,255,0.08)')
+      el.style.setProperty('--border-hover', themeConfig.borderHover || 'rgba(255,255,255,0.15)')
+      el.style.setProperty('--surface-ghost', themeConfig.surfaceGhost || 'rgba(255,255,255,0.04)')
+      el.style.setProperty('--surface-hover', themeConfig.surfaceHover || 'rgba(255,255,255,0.1)')
+      el.style.setProperty('--bg-app', themeConfig.bgApp || '#0a0a0f')
+      el.style.setProperty('--accent', themeConfig.accent || 'rgba(96,165,250,0.8)')
+      el.style.setProperty('--accent-danger', themeConfig.accentDanger || '#ff6b6b')
+      el.style.setProperty('--accent-success', themeConfig.accentSuccess || '#4ade80')
+    } else {
+      el.style.removeProperty('--text-primary'); el.style.removeProperty('--text-secondary'); el.style.removeProperty('--text-tertiary')
+      el.style.removeProperty('--text-muted'); el.style.removeProperty('--text-dim'); el.style.removeProperty('--text-faint')
+      el.style.removeProperty('--border-subtle'); el.style.removeProperty('--border-default'); el.style.removeProperty('--border-hover')
+      el.style.removeProperty('--surface-ghost'); el.style.removeProperty('--surface-hover'); el.style.removeProperty('--bg-app')
+      el.style.removeProperty('--accent'); el.style.removeProperty('--accent-danger'); el.style.removeProperty('--accent-success')
+    }
+  }, [theme, themeConfig])
   useEffect(() => {
     const el = document.documentElement
     if (!bgUrl) {
@@ -697,6 +755,9 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <button className="topbar-icon" title="Console / Logs" onClick={() => setShowTerminal(v => !v)} style={{ color: showTerminal ? 'rgba(100,200,255,0.8)' : undefined }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              </button>
               <div className="topbar-profile" onClick={() => { setShowAccountPicker(true) }} title="Accounts" style={{ cursor: 'pointer' }}>
                 <div className="topbar-avatar">
                   {uuid ? <img src={`https://mineskin.eu/helm/${username}/100`} alt="" style={{ width: 32, height: 32, borderRadius: 8 }} /> : username[0]}
@@ -709,6 +770,47 @@ export default function App() {
               <span className="win-btn" style={{ color: 'rgba(255,255,255,0.25)' }} onClick={() => (window as any).electronAPI?.close()}>&#x2715;</span>
             </div>
           </header>
+
+          {/* Terminal overlay */}
+          {showTerminal && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: consoleColors.bg, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', fontSize: 12, fontFamily: '"Cascadia Code", "Fira Code", monospace', color: consoleColors.text }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.3)' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1.5 }}>Console</span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setLogs([])} style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 10px' }}>Clear</button>
+                  <button onClick={() => setShowTerminal(false)} style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1, padding: '4px 8px' }}>×</button>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                {(() => {
+                  const crashMatch = logs.join('\n').match(/\[Launcher\] Exited with code (\d+)/)
+                  const crashCode = crashMatch ? +crashMatch[1] : null
+                  const oom = crashCode !== null && logs.some(l => /OutOfMemoryError|Out of memory/i.test(l))
+                  const jni = crashCode !== null && logs.some(l => /JNI|SIGSEGV|EXCEPTION_ACCESS_VIOLATION/i.test(l))
+                  const javaErr = logs.join('\n').match(/([a-z_]+\.)+Exception/i)
+                  const summary = crashCode && crashCode !== 0 ? (oom ? 'Out of memory (increase JVM -Xmx in settings)' : jni ? 'Native crash (possibly incompatible mod/Java version)' : javaErr ? `Uncaught exception: ${javaErr[0]}` : `Exit code ${crashCode}`) : null
+                  if (crashCode && crashCode !== 0) {
+                    const crashIdx = logs.findIndex(l => /\[Launcher\] Exited with code/.test(l))
+                    return <>
+                      <div style={{ padding: '8px 12px', marginBottom: 8, borderRadius: 6, background: `${consoleColors.crash}22`, color: consoleColors.crash, fontSize: 12, fontWeight: 600 }}>⛔ Crash detected — {summary}</div>
+                      {logs.map((l, i) => <div key={i} style={{ color: i === crashIdx ? consoleColors.crash : /(Error|Exception|Killed|FAILED)/i.test(l) ? consoleColors.error : /OutOfMemoryError|Out of memory/i.test(l) ? consoleColors.oom : /\[WARN|WARN(ING)?\]/i.test(l) ? consoleColors.warn : /\[INFO\]/i.test(l) ? consoleColors.info : consoleColors.text, fontWeight: i === crashIdx ? 700 : 400 }}>{l}</div>)}
+                      <div ref={logsEndRef} />
+                    </>
+                  }
+                  return logs.length === 0 ? <span style={{ color: 'rgba(255,255,255,0.12)', fontStyle: 'italic' }}>Waiting for Minecraft output…</span> : logs.map((l, i) => {
+                    let color = consoleColors.text
+                    if (/\[Launcher\] Exited with code (\d+)/.test(l)) { color = consoleColors.crash }
+                    else if (/(OutOfMemoryError|Out of memory)/i.test(l)) { color = consoleColors.oom }
+                    else if (/Exception|Error|Killed|FAILED|Could not create/i.test(l)) { color = consoleColors.error }
+                    else if (/\[WARN|WARN(ING)?\]/i.test(l)) { color = consoleColors.warn }
+                    else if (/\[INFO\]/i.test(l)) { color = consoleColors.info }
+                    return <div key={i} style={{ color }}>{l}</div>
+                  })
+                })()}
+                <div ref={logsEndRef} />
+              </div>
+            </div>
+          )}
 
           {/* Content */}
           <div className="content-body">
@@ -783,6 +885,8 @@ export default function App() {
                 privacy={privacy} setPrivacy={setPrivacy}
                 hasSubscription={hasSubscription} setHasSubscription={setHasSubscription}
                 onLogout={handleLogout}
+                consoleColors={consoleColors} setConsoleColors={setConsoleColors}
+                themeConfig={themeConfig} setThemeConfig={setThemeConfig}
               />
             )}
           </div>
@@ -2217,7 +2321,7 @@ function ProfileTab({ username, playerId, uuid, skinUrl, setSkinUrl, capeUrl, se
 }
 
 /* ── Settings ── */
-function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setBgUrl, bgOverlayColor, setBgOverlayColor, ram, setRam, jvm, setJvm, mcPath, setMcPath, servers, setServers, privacy, setPrivacy, hasSubscription, setHasSubscription, onLogout }: {
+function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setBgUrl, bgOverlayColor, setBgOverlayColor, ram, setRam, jvm, setJvm, mcPath, setMcPath, servers, setServers, privacy, setPrivacy, hasSubscription, setHasSubscription, onLogout, consoleColors, setConsoleColors, themeConfig, setThemeConfig }: {
   username: string; playerId: string; skinUrl: string
   theme: string; setTheme: (t: string) => void; bgUrl: string; setBgUrl: (u: string) => void
   bgOverlayColor: string; setBgOverlayColor: (c: string) => void
@@ -2226,6 +2330,8 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
   servers: { name: string; online: string }[]; setServers: (s: any) => void
   privacy: { online: boolean; friendRequests: boolean; activity: boolean; notifications: boolean; discordPresence: boolean }; setPrivacy: (p: any) => void
   hasSubscription: boolean; setHasSubscription: (v: boolean) => void
+  consoleColors: Record<string,string>; setConsoleColors: (c: any) => void
+  themeConfig: Record<string,string>; setThemeConfig: (c: any) => void
   onLogout: () => void
 }) {
   const [bgInputUrl, setBgInputUrl] = useState(bgUrl)
@@ -2419,6 +2525,50 @@ function SettingsTab({ username, playerId, skinUrl, theme, setTheme, bgUrl, setB
             )}
           </div>
         </div>
+
+        <div className="panel set-section">
+          <div className="set-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Console Colors</span>
+            <button className="promo-sub" style={{ padding: '3px 10px', fontSize: 9, background: 'rgba(255,255,255,0.05)' }} onClick={() => setConsoleColors(CONSOLE_DEFAULTS)}>Reset</button>
+          </div>
+          {[{ key: 'text', label: 'Text' }, { key: 'error', label: 'Error' }, { key: 'warn', label: 'Warning' }, { key: 'info', label: 'Info' }, { key: 'crash', label: 'Crash' }, { key: 'oom', label: 'OOM' }, { key: 'bg', label: 'Background' }].map(({ key, label }) => (
+            <div key={key} className="set-row">
+              <span className="set-label">{label}</span>
+              <input type="color" value={/^#[0-9a-f]{6}/i.test(consoleColors[key]) ? consoleColors[key].slice(0,7) : '#808080'} onChange={e => setConsoleColors({ ...consoleColors, [key]: e.target.value })}
+                style={{ width: 40, height: 30, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'none' }} />
+              <input className="set-input set-mono" style={{ width: 160, fontSize: 9 }} value={consoleColors[key]} onChange={e => setConsoleColors({ ...consoleColors, [key]: e.target.value })} />
+            </div>
+          ))}
+        </div>
+
+        {theme === 'custom' && (
+          <div className="panel set-section">
+            <div className="set-title">Custom Theme Colors</div>
+            {[
+              { key: 'text', label: 'Main Text', default: 'rgba(255,255,255,0.85)' },
+              { key: 'secondary', label: 'Secondary Text', default: 'rgba(255,255,255,0.7)' },
+              { key: 'tertiary', label: 'Tertiary Text', default: 'rgba(255,255,255,0.5)' },
+              { key: 'muted', label: 'Muted Text', default: 'rgba(255,255,255,0.3)' },
+              { key: 'dim', label: 'Dim Text', default: 'rgba(255,255,255,0.2)' },
+              { key: 'faint', label: 'Faint Text', default: 'rgba(255,255,255,0.12)' },
+              { key: 'borderSubtle', label: 'Border Subtle', default: 'rgba(255,255,255,0.06)' },
+              { key: 'borderDefault', label: 'Border Default', default: 'rgba(255,255,255,0.08)' },
+              { key: 'borderHover', label: 'Border Hover', default: 'rgba(255,255,255,0.15)' },
+              { key: 'surfaceGhost', label: 'Surface Ghost', default: 'rgba(255,255,255,0.04)' },
+              { key: 'surfaceHover', label: 'Surface Hover', default: 'rgba(255,255,255,0.1)' },
+              { key: 'bgApp', label: 'App Background', default: '#0a0a0f' },
+              { key: 'accent', label: 'Accent', default: 'rgba(96,165,250,0.8)' },
+              { key: 'accentDanger', label: 'Danger', default: '#ff6b6b' },
+              { key: 'accentSuccess', label: 'Success', default: '#4ade80' },
+            ].map(({ key, label, default: def }) => (
+              <div key={key} className="set-row">
+                <span className="set-label">{label}</span>
+                <input type="color" value={/^#[0-9a-f]{6}/i.test(themeConfig[key] || def) ? (themeConfig[key] || def).slice(0,7) : '#808080'} onChange={e => setThemeConfig({ ...themeConfig, [key]: e.target.value })} style={{ width: 40, height: 30, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'none' }} />
+                <input className="set-input set-mono" style={{ width: 140, fontSize: 9 }} value={themeConfig[key] ?? def} onChange={e => setThemeConfig({ ...themeConfig, [key]: e.target.value })} />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="panel set-section">
           <div className="set-title">Account</div>

@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { spawn, execSync } = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
-const { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession } = require('./auth-main');
+const { loginWithMicrosoft, refreshMinecraftToken, checkSavedSession, loadRefreshSession } = require('./auth-main');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -267,6 +267,7 @@ ipcMain.handle('data:load-accounts', async () => {
 });
 
 app.whenReady().then(() => {
+  loadRefreshSession();
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.stringclient.launcher');
     const icoPath = path.join(__dirname, 'buildResources', 'icon-256.png');
@@ -578,7 +579,7 @@ ipcMain.handle('install:select-path', async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
-const LAUNCHER_DOWNLOAD_URL = 'https://stringclient.com/api/launcher/download';
+const LAUNCHER_DOWNLOAD_URL = process.env.LAUNCHER_DOWNLOAD_URL || 'http://localhost:3000/api/launcher/download';
 
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
@@ -635,12 +636,16 @@ ipcMain.handle('install:run', async (_, { installPath, desktopShortcut, startMen
       }
       copyRecursive(srcPath, targetDir);
 
-      send('Downloading latest launcher from server...');
-      const zipDest = path.join(os.tmpdir(), 'string-client-launcher.zip');
-      await downloadFile(LAUNCHER_DOWNLOAD_URL, zipDest);
-      send('Extracting...');
-      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipDest}' -DestinationPath '${targetDir}' -Force"`, { timeout: 60000, shell: true });
-      try { fs.unlinkSync(zipDest) } catch {}
+      try {
+        send('Downloading latest launcher from server...');
+        const zipDest = path.join(os.tmpdir(), 'string-client-launcher.zip');
+        await downloadFile(LAUNCHER_DOWNLOAD_URL, zipDest);
+        send('Extracting...');
+        const extractDir = path.join(targetDir, 'resources', 'app');
+        if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
+        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipDest}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000, shell: true });
+        try { fs.unlinkSync(zipDest) } catch {}
+      } catch { send('  ⚠ Server download failed — using bundled version'); }
     }
 
     send('Installing dependencies...');
@@ -702,16 +707,16 @@ ipcMain.handle('install:run', async (_, { installPath, desktopShortcut, startMen
 ipcMain.handle('install:launch', async (_, installPath) => {
   try {
     const targetDir = installPath || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', APP_NAME);
-    // Try node_modules/electron (from npm install) first — works in both dev and packaged
+    // Try node_modules/electron (from npm install) first
     let exePath = path.join(targetDir, 'node_modules', 'electron', 'dist', 'electron.exe');
     if (fs.existsSync(exePath)) {
       spawn(exePath, [targetDir], { detached: true, stdio: 'ignore' });
       app.exit(0);
     }
-    // Fallback: use the exe copied by copyRecursive (packaged mode without npm electron)
+    // Fallback: use the exe copied by copyRecursive (packaged mode)
     exePath = path.join(targetDir, path.basename(app.getPath('exe')));
     if (fs.existsSync(exePath)) {
-      spawn(exePath, [], { detached: true, stdio: 'ignore' });
+      spawn(exePath, [targetDir], { detached: true, stdio: 'ignore' });
       app.exit(0);
     }
   } catch {}

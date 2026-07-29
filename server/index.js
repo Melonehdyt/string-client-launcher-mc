@@ -1,8 +1,8 @@
 import { randomUUID, createHash } from 'crypto'
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, createReadStream } from 'fs'
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, createReadStream, createWriteStream, unlinkSync, renameSync, readdirSync } from 'fs'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
-import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join, extname } from 'path'
+import { config } from 'dotenv'; import { fileURLToPath } from 'url'; import { dirname, join, extname, basename } from 'path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: join(__dirname, '.env') })
 
@@ -105,8 +105,9 @@ const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || ''
 const ADMIN_GUILD_ID = process.env.ADMIN_DISCORD_GUILD_ID || ''
 const ADMIN_ROLE_IDS = (process.env.ADMIN_DISCORD_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
 const OWNER_DISCORD_ROLE_IDS = (process.env.OWNER_DISCORD_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
-const OAUTH_REDIRECT = `${process.env.API_URL || `http://localhost:${PORT}`}/api/admin/auth/callback`
+const OAUTH_REDIRECT = `${(process.env.API_URL || `http://localhost:${PORT}`).replace(/\/+$/, '')}/api/admin/auth/callback`
 const adminTokens = new Map()
+const downloadTokens = new Map() // token -> expiry timestamp (1 hour)
 
 function makeToken() { return createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32) }
 
@@ -156,8 +157,21 @@ function requireAdmin(req, res) {
   return adminTokens.get(token) || {}
 }
 
+const CONFIG_PATH = join(__dirname, 'launcher-build', 'config.json')
+function loadLauncherConfig() {
+  if (!existsSync(CONFIG_PATH)) return { downloadPassword: '' }
+  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) } catch { return { downloadPassword: '' } }
+}
+function saveLauncherConfig(cfg) {
+  const dir = dirname(CONFIG_PATH)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8')
+}
+
 // ── HTTP Server ──
 const server = createServer(async (req, res) => {
+  // Allow large uploads (exe files up to 2GB)
+  req.socket.setTimeout(1800000) // 30 min socket timeout
   if (req.method === 'OPTIONS') { json(res, 204, ''); return }
 
   const url = new URL(req.url, `http://${req.headers.host}`)
@@ -394,6 +408,62 @@ const server = createServer(async (req, res) => {
     createReadStream(zipPath).pipe(res)
     return
   }
+  function findExe() {
+    const dir = join(__dirname, 'launcher-build')
+    if (!existsSync(dir)) return null
+    const files = readdirSync(dir).filter(f => f.endsWith('.exe'))
+    if (files.length === 0) return null
+    // Prefer "String-Client-Setup.exe", otherwise take the largest .exe
+    const preferred = files.find(f => f === 'String-Client-Setup.exe')
+    const chosen = preferred || files.sort((a, b) => statSync(join(dir, b)).size - statSync(join(dir, a)).size)[0]
+    return join(dir, chosen)
+  }
+
+  if (req.method === 'GET' && pathname === '/api/launcher/build-info') {
+    const result = { exe: null, zip: null }
+    const exePath = findExe()
+    if (exePath) { const s = statSync(exePath); result.exe = { size: s.size, modified: s.mtimeMs } }
+    const zipPath = join(__dirname, 'launcher-build', 'latest.zip')
+    if (existsSync(zipPath)) { const s = statSync(zipPath); result.zip = { size: s.size, modified: s.mtimeMs } }
+    return json(res, 200, result)
+  }
+  if (req.method === 'GET' && pathname === '/api/launcher/download/exe') {
+    // Clean expired tokens
+    const now = Date.now()
+    for (const [t, exp] of downloadTokens) { if (exp < now) downloadTokens.delete(t) }
+    // Require valid token if password is set
+    const cfg = loadLauncherConfig()
+    if (cfg.downloadPassword) {
+      const token = url.searchParams.get('token')
+      if (!token || !downloadTokens.has(token)) return json(res, 403, { error: 'Unauthorized — password required' })
+    }
+    const exePath = findExe()
+    if (!exePath) { json(res, 404, { error: 'No setup available' }); return }
+    const stat = statSync(exePath)
+    res.writeHead(200, {
+      'Content-Type': 'application/x-msdownload',
+      'Content-Disposition': `attachment; filename="${basename(exePath)}"`,
+      'Content-Length': stat.size,
+    })
+    createReadStream(exePath).pipe(res)
+    return
+  }
+  if (req.method === 'POST' && pathname === '/api/launcher/download/verify-password') {
+    const { password } = await body(req)
+    const cfg = loadLauncherConfig()
+    if (!cfg.downloadPassword) return json(res, 200, { ok: true, noPassword: true })
+    if (password === cfg.downloadPassword) {
+      const token = makeToken()
+      downloadTokens.set(token, Date.now() + 3600000) // 1 hour
+      return json(res, 200, { ok: true, token })
+    }
+    return json(res, 200, { ok: false })
+  }
+  if (req.method === 'GET' && pathname === '/api/admin/launcher/password-status') {
+    if (!requireAdmin(req, res)) return
+    const cfg = loadLauncherConfig()
+    return json(res, 200, { hasPassword: !!cfg.downloadPassword })
+  }
   if (pathname === '/api/index/cosmetics') {
     return json(res, 200, loadCosmeticsDef())
   }
@@ -540,7 +610,44 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { ok: true })
   }
 
-  // ── Admin: Banners ──
+  // ── Admin: Portable EXE upload (protected by admin panel login) ──
+  if (req.method === 'POST' && pathname === '/api/admin/launcher/upload-exe') {
+    if (!requireAdmin(req, res)) return
+    try {
+      const exeDir = join(__dirname, 'launcher-build')
+      if (!existsSync(exeDir)) mkdirSync(exeDir, { recursive: true })
+      const tmpPath = join(exeDir, 'String-Client-Setup.exe.tmp')
+      const finalPath = join(exeDir, 'String-Client-Setup.exe')
+      const ws = createWriteStream(tmpPath)
+      req.pipe(ws)
+      let size = 0
+      req.on('data', c => size += c.length)
+      await new Promise((resolve, reject) => {
+        ws.on('finish', resolve)
+        ws.on('error', e => { try { unlinkSync(tmpPath) } catch {}; reject(e) })
+        req.on('error', e => { ws.destroy(); try { unlinkSync(tmpPath) } catch {}; reject(e) })
+      })
+      renameSync(tmpPath, finalPath)
+      console.log(`[String Client] EXE uploaded: ${(size / 1024 / 1024).toFixed(0)} MB`)
+      return json(res, 200, { ok: true, size })
+    } catch (e) {
+      console.error('[String Client] Upload error:', e.message)
+      return json(res, 500, { error: 'Upload failed: ' + e.message })
+    }
+  }
+
+  // ── Admin: Set download password ──
+  if (req.method === 'POST' && pathname === '/api/admin/launcher/set-password') {
+    if (!requireAdmin(req, res)) return
+    const { password } = await body(req)
+    if (typeof password !== 'string') return json(res, 400, { error: 'password required' })
+    const cfg = loadLauncherConfig()
+    cfg.downloadPassword = password
+    saveLauncherConfig(cfg)
+    return json(res, 200, { ok: true })
+  }
+
+  // ── Banners ──
   if (pathname === '/api/admin/banners') {
     if (!requireAdmin(req, res)) return
     const index = loadBannerIndex()
@@ -847,6 +954,15 @@ const server = createServer(async (req, res) => {
 
   if (pathname === '/' || pathname === '/index.html') {
     const file = join(__dirname, 'public', 'index.html')
+    if (!existsSync(file)) { json(res, 404, { error: 'not found' }); return }
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    const { createReadStream: rs } = await import('fs')
+    rs(file).pipe(res)
+    return
+  }
+
+  if (pathname === '/download' || pathname === '/download.html') {
+    const file = join(__dirname, 'public', 'download.html')
     if (!existsSync(file)) { json(res, 404, { error: 'not found' }); return }
     res.writeHead(200, { 'Content-Type': 'text/html' })
     const { createReadStream: rs } = await import('fs')
@@ -1252,6 +1368,7 @@ function loadServers() {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[String Client] HTTP + WS on http://localhost:${PORT}`)
   console.log(`[String Client] ${Object.keys(db).length} registered players`)
+  if (DISCORD_CLIENT_ID) console.log(`[String Client] OAuth redirect: ${OAUTH_REDIRECT}`)
 
   // Auto-start Discord bot as child process
   if (!process.env.SKIP_BOT) {
